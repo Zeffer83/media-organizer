@@ -3,7 +3,7 @@
 A comprehensive PowerShell utility for organizing and processing local photos and videos with intelligent date extraction, GPU-accelerated video conversion, and safe rollback capabilities.
 
 **Author:** Ryan Zeffiretti  
-**Version:** 1.1.0 (Latest Release)  
+**Version:** 1.1.1 (Latest Release)  
 **License:** MIT
 
 ## Why MediaOrganizer?
@@ -96,7 +96,7 @@ Download the latest release EXE from the [Releases](https://github.com/Zeffer83/
 ## Menu Overview
 
 ```
-MediaOrganizer v1.1.0
+MediaOrganizer v1.1.1
 Author: Ryan Zeffiretti
 ------------------------------------------------------------
 Organize and process your media:

@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.0'
+$global:AppVersion = '1.1.1'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -531,7 +531,16 @@ function Get-DatesFromFilename($name, [switch]$Verbose) {
     # These patterns only contain date information and default to 00:00:00 time.
     # They are processed last as they provide the least specific information.
     
-    # Photo with number suffix (date only)
+    # Photo with yyyy_MM_dd_HHMM format (e.g., 2016_08_03_4170)
+    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_(?<H>\d{2})(?<N>\d{2})$')) { 
+        $dt = $null; 
+        try { 
+            $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
+        } catch {}; 
+        Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM' $dt $m.Value 
+    }
+    
+    # Photo with number suffix (date only) - fallback for patterns that don't match time
     foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_\d+')) { 
         $dt = $null; 
         try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; 
