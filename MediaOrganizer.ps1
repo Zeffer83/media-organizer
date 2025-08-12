@@ -5,9 +5,6 @@ $global:AppName = 'MediaOrganizer'
 $global:AppVersion = '1.0.0'
 $global:AppAuthor = 'Ryan Zeffiretti'
 
-# Self-contained Photo & Video Utilities: Rename and Convert (GPU→CPU) with a menu.
-# Place ffmpeg.exe, ffprobe.exe (and optionally exiftool.exe, mediainfo.exe) in a sibling 'tools' folder.
-
 # === Helpers ===
 function Read-YesNoDefault {
     param([string]$Prompt, [bool]$Default = $true)
