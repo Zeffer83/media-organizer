@@ -16,7 +16,6 @@ maps/
 tools/
 
 # Test media (do not publish)
-Test Photos/
-Test Videos/
+Test data/
 
 

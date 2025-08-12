@@ -1,12 +1,61 @@
 param()
 
-# === App metadata ===
-$global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.0.0'
-$global:AppAuthor = 'Ryan Zeffiretti'
+# =============================================================================
+# MediaOrganizer - PowerShell Media Organization and Conversion Utility
+# =============================================================================
+# 
+# This script provides comprehensive media file organization and conversion
+# capabilities with intelligent date extraction, GPU-accelerated encoding,
+# and safe rollback mechanisms.
+#
+# Key Features:
+# - Standardize filenames to yyyy-MM-dd_HHmmss_# format
+# - Multi-source date extraction (filename, EXIF, file system, folders)
+# - GPU-accelerated video conversion with CPU fallback
+# - Safe rollback operations with CSV-based mapping
+# - Comprehensive logging and error handling
+#
+# Author: Ryan Zeffiretti
+# Version: 1.1.0
+# License: MIT
+# =============================================================================
 
-# === Helpers ===
+# === Application Metadata ===
+# Global variables for application information and versioning
+$global:AppName = 'MediaOrganizer'
+$global:AppVersion = '1.1.0'
+$global:AppAuthor = 'Ryan Zeffiretti'
+$global:AppDescription = 'Organize and convert media files with standardized naming'
+$global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+# === User Input Helpers ===
+# Provides consistent yes/no prompts with default values and clear formatting
+
 function Read-YesNoDefault {
+    <#
+    .SYNOPSIS
+        Prompts user for yes/no input with a default value.
+    
+    .DESCRIPTION
+        Displays a formatted yes/no prompt with clear indication of the default choice.
+        Returns boolean true/false based on user input.
+    
+    .PARAMETER Prompt
+        The question text to display to the user.
+    
+    .PARAMETER Default
+        The default value if user just presses Enter. Defaults to true.
+    
+    .RETURNS
+        Boolean: true for yes, false for no.
+    
+    .EXAMPLE
+        $result = Read-YesNoDefault -Prompt "Continue?" -Default $true
+    #>
     param([string]$Prompt, [bool]$Default = $true)
     $suffix = if ($Default) { "[Y/n]" } else { "[y/N]" }
     $ans = Read-Host ("{0} {1}" -f $Prompt, $suffix)
@@ -40,6 +89,24 @@ function Resolve-ExternalTool {
 }
 
 function Get-UniquePath {
+    <#
+    .SYNOPSIS
+        Generates a unique file path by adding numbered suffixes.
+    
+    .DESCRIPTION
+        If the specified path already exists, generates a new path with a numbered
+        suffix in parentheses (e.g., file (1).txt, file (2).txt) until a unique
+        path is found.
+    
+    .PARAMETER Path
+        The original file path to make unique.
+    
+    .RETURNS
+        String: A unique file path that doesn't exist.
+    
+    .EXAMPLE
+        $uniquePath = Get-UniquePath -Path "C:\temp\file.txt"
+    #>
     param([string]$Path)
     $dir = Split-Path -Parent $Path
     $base = [IO.Path]::GetFileNameWithoutExtension($Path)
@@ -50,14 +117,42 @@ function Get-UniquePath {
 }
 
 function Show-Header {
+    <#
+    .SYNOPSIS
+        Displays the application header with version and author information.
+    
+    .DESCRIPTION
+        Creates a formatted header display showing the application name, version,
+        author, and a separator line for visual clarity.
+    #>
     Write-Host ''
     Write-Host ("{0} v{1}" -f $AppName, $AppVersion) -ForegroundColor Cyan
     Write-Host ("Author: {0}" -f $AppAuthor) -ForegroundColor DarkGray
     Write-Host ('-' * 60) -ForegroundColor DarkGray
 }
 
-# === Tool status and help ===
+# === External Tool Management ===
+# Functions to detect and manage external dependencies required by the application
+
 function Get-ToolStatus {
+    <#
+    .SYNOPSIS
+        Detects the availability of external tools required by the application.
+    
+    .DESCRIPTION
+        Searches for external tools in the tools/ directory and system PATH.
+        Returns a status object indicating which tools are available.
+    
+    .RETURNS
+        PSCustomObject: Status of each external tool (path if found, null if missing).
+    
+    .NOTES
+        Required tools:
+        - ffmpeg/ffprobe: Video encoding and metadata extraction
+        - exiftool: Enhanced EXIF metadata support
+        - mediainfo: Additional media metadata extraction
+        - magick: Image format conversion (ImageMagick)
+    #>
     $ffmpeg = Resolve-ExternalTool -CandidateNames @('ffmpeg.exe', 'ffmpeg') -RelativePaths @('tools\\ffmpeg.exe', '..\\tools\\ffmpeg.exe')
     $ffprobe = Resolve-ExternalTool -CandidateNames @('ffprobe.exe', 'ffprobe') -RelativePaths @('tools\\ffprobe.exe', '..\\tools\\ffprobe.exe')
     $exiftool = Resolve-ExternalTool -CandidateNames @('exiftool.exe', 'exiftool') -RelativePaths @('tools\\exiftool.exe', 'tools\\exiftool(-k).exe')
@@ -82,6 +177,15 @@ function Show-ToolStatus {
 }
 
 function Show-Menu {
+    <#
+    .SYNOPSIS
+        Displays the main application menu with detailed descriptions of each option.
+    
+    .DESCRIPTION
+        Shows a formatted menu with the application header, tool status, and detailed
+        descriptions of each available operation. Each menu option includes information
+        about its functionality, supported formats, and output locations.
+    #>
     Show-Header
     Show-ToolStatus
     Write-Host 'Organize and process your media:' -ForegroundColor Yellow
@@ -112,14 +216,76 @@ function Show-Menu {
     Write-Host '0) Exit' -ForegroundColor Red
 }
 
-# === Rename implementation (self-contained) ===
+# =============================================================================
+# DATE EXTRACTION AND PROCESSING FUNCTIONS
+# =============================================================================
+# 
+# These functions handle the complex task of extracting dates from various sources
+# including filenames, embedded metadata, file system timestamps, and folder names.
+# The system uses a priority-based approach to select the most reliable date source.
+
+# === Data Type Conversion Helpers ===
+# Safe conversion functions for handling various data types and formats
+
 function ConvertTo-IntScalar([object]$v) {
+    <#
+    .SYNOPSIS
+        Safely converts a value to an integer, handling arrays and null values.
+    
+    .DESCRIPTION
+        Converts various data types to integers with error handling.
+        If the input is an array, takes the first element.
+        Returns null if conversion fails or input is null.
+    
+    .PARAMETER v
+        The value to convert to integer.
+    
+    .RETURNS
+        Integer or null if conversion fails.
+    
+    .EXAMPLE
+        $result = ConvertTo-IntScalar -v "123"
+        $result = ConvertTo-IntScalar -v @("456", "789")
+    #>
     if ($null -eq $v) { return $null }
     if ($v -is [System.Array]) { if ($v.Length -gt 0) { $v = $v[0] } else { return $null } }
     try { return [int]$v } catch { return $null }
 }
 
 function New-DateTimeSafe([object]$Year, [object]$Month, [object]$Day, [object]$Hour = 0, [object]$Minute = 0, [object]$Second = 0) {
+    <#
+    .SYNOPSIS
+        Safely creates a DateTime object with error handling.
+    
+    .DESCRIPTION
+        Converts individual date/time components to a DateTime object.
+        Uses ConvertTo-IntScalar for safe type conversion.
+        Returns null if any component is invalid or conversion fails.
+    
+    .PARAMETER Year
+        The year component.
+    
+    .PARAMETER Month
+        The month component (1-12).
+    
+    .PARAMETER Day
+        The day component (1-31).
+    
+    .PARAMETER Hour
+        The hour component (0-23). Defaults to 0.
+    
+    .PARAMETER Minute
+        The minute component (0-59). Defaults to 0.
+    
+    .PARAMETER Second
+        The second component (0-59). Defaults to 0.
+    
+    .RETURNS
+        DateTime object or null if creation fails.
+    
+    .EXAMPLE
+        $dt = New-DateTimeSafe -Year 2024 -Month 1 -Day 15 -Hour 14 -Minute 30 -Second 45
+    #>
     $Y = ConvertTo-IntScalar $Year; $Mo = ConvertTo-IntScalar $Month; $D = ConvertTo-IntScalar $Day
     $H = ConvertTo-IntScalar $Hour; $Mi = ConvertTo-IntScalar $Minute; $S = ConvertTo-IntScalar $Second
     if ($null -eq $Y -or $null -eq $Mo -or $null -eq $D -or $null -eq $H -or $null -eq $Mi -or $null -eq $S) { return $null }
@@ -173,41 +339,255 @@ function Get-PhotoTakenDate {
 }
 
 function Get-DatesFromFilename($name, [switch]$Verbose) {
+    <#
+    .SYNOPSIS
+        Extracts dates from filename using multiple regex patterns.
+    
+    .DESCRIPTION
+        Analyzes a filename against various date/time patterns commonly used
+        in media files. Uses a priority system where patterns with time
+        information are preferred over date-only patterns.
+        
+        Pattern Priority (highest to lowest):
+        1. Patterns with time (yyyyMMdd_HHmmss, yyyy-MM-dd HH:mm:ss, etc.)
+        2. Date-only patterns (yyyyMMdd, yyyy-MM-dd, etc.)
+        3. Device-specific patterns (DJI, PXL, IMG, etc.)
+    
+    .PARAMETER name
+        The filename to analyze (without path or extension).
+    
+    .PARAMETER Verbose
+        Switch to enable debug output showing which patterns match.
+    
+    .RETURNS
+        Array of PSCustomObject with Source, Date, and Raw properties.
+    
+    .EXAMPLE
+        $dates = Get-DatesFromFilename -name "20231201_143022" -Verbose
+    #>
     if ([string]::IsNullOrWhiteSpace($name)) { return @() }
     if ($Verbose) { Write-Host "DEBUG: Analyze filename: '$name'" }
     $candidates = New-Object System.Collections.Generic.List[object]
+    
+    # Helper function to add date candidates to the collection
     function Add-Candidate($src, $dt, $raw) { if ($dt) { $candidates.Add([pscustomobject]@{Source = $src; Date = $dt; Raw = $raw }) } }
+    # =============================================================================
+    # REGEX PATTERNS FOR DATE/TIME EXTRACTION
+    # =============================================================================
+    # 
+    # These patterns are ordered by priority (most specific to least specific)
+    # to ensure the best date/time information is extracted first.
+    #
+    # Pattern Format: (?<!\d) - Negative lookbehind (not preceded by digit)
+    #                 (?<Y>...) - Named capture group for Year
+    #                 (?!\d) - Negative lookahead (not followed by digit)
+    
+    # Pattern 1: yyyyMMdd_HHmmss (e.g., 20231201_143022)
     $pat1 = '(?<!\d)(?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])[_-](?<H>[01]\d|2[0-3])(?<N>[0-5]\d)(?<S>[0-5]\d)(?!\d)'
+    
+    # Pattern 2: yyyy-MM-dd HH:mm[:ss] (e.g., 2023-12-01 14:30:22)
     $pat2 = '(?<!\d)(?<Y>(?:19|20)\d{2})[-_](?<M>0[1-9]|1[0-2])[-_](?<D>0[1-9]|[12]\d|3[01])[ _T-](?<H>[01]\d|2[0-3])[-_:](?<N>[0-5]\d)(?:[-_:](?<S>[0-5]\d))?(?!\d)'
+    
+    # Pattern 3: yyyyMMdd (date only, e.g., 20231201)
     $pat3 = '(?<!\d)(?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])(?!\d)'
+    
+    # Pattern 4: yyyy-MM-dd (date only, e.g., 2023-12-01)
     $pat4 = '(?<!\d)(?<Y>(?:19|20)\d{2})[-_](?<M>0[1-9]|1[0-2])[-_](?<D>0[1-9]|[12]\d|3[01])(?!\d)'
+    
+    # Pattern 5: yyyy_MM_dd_HHmmss (e.g., 2023_12_01_143022)
     $pat5 = '(?<!\d)(?<Y>(?:19|20)\d{2})_(?<M>0[1-9]|1[0-2])_(?<D>0[1-9]|[12]\d|3[01])_(?<H>[01]\d|2[0-3])(?<N>[0-5]\d)(?<S>[0-5]\d)(?!\d)'
+    
+    # Pattern 6: yyyyMMdd_HHmmss (e.g., 20231201_143022) - HIGH PRIORITY
     $pat6 = '(?<!\d)(?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])_(?<H>[01]\d|2[0-3])(?<N>[0-5]\d)(?<S>[0-5]\d)(?!\d)'
+    
+    # Pattern 7: yyyyMMddHHmmss (e.g., 20231201143022)
     $pat7 = '(?<!\d)(?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])(?<H>[01]\d|2[0-3])(?<N>[0-5]\d)(?<S>[0-5]\d)(?!\d)'
+    
+    # Pattern 8: DJI Fly format (e.g., dji_fly_20231201_143022)
     $pat8 = '(?i)dji[_-]fly[_-](?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])[_-](?<H>[01]\d|2[0-3])(?<N>[0-5]\d)(?<S>[0-5]\d)'
+    
+    # Pattern 9: Google Pixel format (e.g., PXL_20231201_1430221234)
     $pat9 = '(?i)PXL_(?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])_(?<H>[01]\d|2[0-3])(?<N>[0-5]\d)(?<S>[0-5]\d)\d+'
+    
+    # Pattern 10: Windows Phone format (e.g., WP_20231201_14_30_22)
     $pat10 = '(?i)WP_(?<Y>(?:19|20)\d{2})(?<M>0[1-9]|1[0-2])(?<D>0[1-9]|[12]\d|3[01])_(?<H>[01]\d|2[0-3])_(?<N>[0-5]\d)_(?<S>[0-5]\d)'
-    foreach ($m in [regex]::Matches($name, $pat1)) { $raw = ($m.Value -replace '-', '_'); $dt = $null; try { $dt = [datetime]::ParseExact($raw, 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:yyyyMMdd_HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat2)) { $norm = $m.Value -replace '_', '-' -replace 'T', ' '; $norm = $norm -replace '(\d{2})-(\d{2})-(\d{2})(?!\d)', '$1:$2:$3'; $norm = $norm -replace '(\d{2})-(\d{2})(?!\d)', '$1:$2'; $dt = $null; foreach ($fmt in @('yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd HH:mm')) { if (-not $dt) { try { $dt = [datetime]::ParseExact($norm, $fmt, [cultureinfo]::InvariantCulture) }catch {} } }; Add-Candidate 'Name:yyyy-MM-dd HH:mm[:ss]' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat5)) { $dt = $null; try { $dt = [datetime]::ParseExact($m.Value, 'yyyy_MM_dd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:yyyy_MM_dd_HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat6)) { $dt = $null; try { $dt = [datetime]::ParseExact($m.Value, 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:yyyyMMdd_HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat7)) { $dt = $null; try { $dt = [datetime]::ParseExact($m.Value, 'yyyyMMddHHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:yyyyMMddHHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat8)) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:dji_fly_yyyyMMdd_HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat9)) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:PXL_yyyyMMdd_HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat10)) { $norm = ($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value); $dt = $null; try { $dt = [datetime]::ParseExact($norm, 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:WP_yyyyMMdd_HH_mm_ss' $dt $m.Value }
-    # Photo-specific patterns
-    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})_(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})\(\d+\)')) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:Photo_yyyyMMdd_HHmmss_with_number' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, '^IMG_(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})_(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})')) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:IMG_yyyyMMdd_HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_\d+')) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; Add-Candidate 'Name:Photo_yyyy_MM_dd_with_number' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, '^Screenshot_(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})-(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})')) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:Screenshot_yyyyMMdd-HHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, '^IMG-(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})-WA\d+')) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; Add-Candidate 'Name:IMG-yyyyMMdd-WA' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, '^DJI_(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})')) { $dt = $null; try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMddHHmmss', [cultureinfo]::InvariantCulture) }catch {}; Add-Candidate 'Name:DJI_yyyyMMddHHmmss' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat3)) { $dt = $null; try { $dt = [datetime]::ParseExact($m.Value, 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; Add-Candidate 'Name:yyyyMMdd' $dt $m.Value }
-    foreach ($m in [regex]::Matches($name, $pat4)) { $norm = $m.Value -replace '_', '-'; $dt = $null; try { $dt = [datetime]::ParseExact($norm, 'yyyy-MM-dd', [cultureinfo]::InvariantCulture) }catch {}; if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; Add-Candidate 'Name:yyyy-MM-dd' $dt $m.Value }
+    # =============================================================================
+    # PATTERN MATCHING AND DATE EXTRACTION
+    # =============================================================================
+    # 
+    # Each pattern is processed in order of priority. For each match:
+    # 1. Extract the matched text
+    # 2. Normalize the format for DateTime parsing
+    # 3. Attempt to parse the date/time
+    # 4. Add to candidates list if successful
+    
+    # Pattern 1: yyyyMMdd_HHmmss format (e.g., 20231201_143022)
+    foreach ($m in [regex]::Matches($name, $pat1)) { 
+        $raw = ($m.Value -replace '-', '_'); 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($raw, 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:yyyyMMdd_HHmmss' $dt $m.Value 
+    }
+    
+    # Pattern 2: yyyy-MM-dd HH:mm[:ss] format (handles optional seconds)
+    foreach ($m in [regex]::Matches($name, $pat2)) {
+        $Y = $m.Groups['Y'].Value; $Mo = $m.Groups['M'].Value; $D = $m.Groups['D'].Value
+        $H = $m.Groups['H'].Value; $N = $m.Groups['N'].Value; $S = $m.Groups['S'].Value
+        $norm = ("{0}-{1}-{2} {3}:{4}" -f $Y, $Mo, $D, $H, $N)
+        if ($S -and $S.Trim().Length -gt 0) { $norm = ($norm + ":" + $S) }
+        $dt = $null
+        foreach ($fmt in @('yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd HH:mm')) { 
+            if (-not $dt) { 
+                try { $dt = [datetime]::ParseExact($norm, $fmt, [cultureinfo]::InvariantCulture) } catch {} 
+            } 
+        }
+        Add-Candidate 'Name:yyyy-MM-dd HH:mm[:ss]' $dt $m.Value
+    }
+    # =============================================================================
+    # HIGH PRIORITY PATTERNS (WITH TIME INFORMATION)
+    # =============================================================================
+    # These patterns are processed first as they contain time information,
+    # which is more valuable than date-only patterns.
+    
+    # Pattern 6: yyyyMMdd_HHmmss (HIGH PRIORITY - processed first)
+    foreach ($m in [regex]::Matches($name, $pat6)) { 
+        if ($Verbose) { Write-Host "DEBUG: pat6 matched: '$($m.Value)' for '$name'" }; 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($m.Value, 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:yyyyMMdd_HHmmss' $dt $m.Value 
+    }
+    
+    # Pattern 7: yyyyMMddHHmmss (no separators)
+    foreach ($m in [regex]::Matches($name, $pat7)) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($m.Value, 'yyyyMMddHHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:yyyyMMddHHmmss' $dt $m.Value 
+    }
+    
+    # Pattern 5: yyyy_MM_dd_HHmmss format
+    foreach ($m in [regex]::Matches($name, $pat5)) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($m.Value, 'yyyy_MM_dd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:yyyy_MM_dd_HHmmss' $dt $m.Value 
+    }
+    
+    # Pattern 8: DJI Fly format (e.g., dji_fly_20231201_143022)
+    foreach ($m in [regex]::Matches($name, $pat8)) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:dji_fly_yyyyMMdd_HHmmss' $dt $m.Value 
+    }
+    
+    # Pattern 9: Google Pixel format (e.g., PXL_20231201_1430221234)
+    foreach ($m in [regex]::Matches($name, $pat9)) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:PXL_yyyyMMdd_HHmmss' $dt $m.Value 
+    }
+    
+    # Pattern 10: Windows Phone format (e.g., WP_20231201_14_30_22)
+    foreach ($m in [regex]::Matches($name, $pat10)) { 
+        $norm = ($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value); 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($norm, 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:WP_yyyyMMdd_HH_mm_ss' $dt $m.Value 
+    }
+    # =============================================================================
+    # DEVICE-SPECIFIC PHOTO PATTERNS (WITH TIME)
+    # =============================================================================
+    # These patterns handle specific device naming conventions that include time
+    
+    # Photo with number suffix (e.g., 20231201_143022(1))
+    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})_(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})\(\d+\)')) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:Photo_yyyyMMdd_HHmmss_with_number' $dt $m.Value 
+    }
+    
+    # iPhone IMG format (e.g., IMG_20231201_143022)
+    foreach ($m in [regex]::Matches($name, '^IMG_(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})_(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})')) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:IMG_yyyyMMdd_HHmmss' $dt $m.Value 
+    }
+    
+    # Samsung Screenshot format (e.g., Screenshot_20231201-143022)
+    foreach ($m in [regex]::Matches($name, '^Screenshot_(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})-(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})')) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:Screenshot_yyyyMMdd-HHmmss' $dt $m.Value 
+    }
+    
+    # DJI format (e.g., DJI_20231201143022)
+    foreach ($m in [regex]::Matches($name, '^DJI_(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})(?<H>\d{2})(?<N>\d{2})(?<S>\d{2})')) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + $m.Groups['H'].Value + $m.Groups['N'].Value + $m.Groups['S'].Value), 'yyyyMMddHHmmss', [cultureinfo]::InvariantCulture) }catch {}; 
+        Add-Candidate 'Name:DJI_yyyyMMddHHmmss' $dt $m.Value 
+    }
+    
+    # =============================================================================
+    # DATE-ONLY PATTERNS (LOWEST PRIORITY)
+    # =============================================================================
+    # These patterns only contain date information and default to 00:00:00 time.
+    # They are processed last as they provide the least specific information.
+    
+    # Photo with number suffix (date only)
+    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_\d+')) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; 
+        if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; 
+        Add-Candidate 'Name:Photo_yyyy_MM_dd_with_number' $dt $m.Value 
+    }
+    
+    # WhatsApp format (e.g., IMG-20231201-WA1234)
+    foreach ($m in [regex]::Matches($name, '^IMG-(?<Y>\d{4})(?<M>\d{2})(?<D>\d{2})-WA\d+')) { 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; 
+        if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; 
+        Add-Candidate 'Name:IMG-yyyyMMdd-WA' $dt $m.Value 
+    }
+    
+    # Pattern 3: yyyyMMdd (date only)
+    foreach ($m in [regex]::Matches($name, $pat3)) { 
+        if ($Verbose) { Write-Host "DEBUG: pat3 matched: '$($m.Value)' for '$name'" }; 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($m.Value, 'yyyyMMdd', [cultureinfo]::InvariantCulture) }catch {}; 
+        if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; 
+        Add-Candidate 'Name:yyyyMMdd' $dt $m.Value 
+    }
+    
+    # Pattern 4: yyyy-MM-dd (date only)
+    foreach ($m in [regex]::Matches($name, $pat4)) { 
+        $norm = $m.Value -replace '_', '-'; 
+        $dt = $null; 
+        try { $dt = [datetime]::ParseExact($norm, 'yyyy-MM-dd', [cultureinfo]::InvariantCulture) }catch {}; 
+        if ($dt) { $dt = Get-Date -Year $dt.Year -Month $dt.Month -Day $dt.Day -Hour 0 -Minute 0 -Second 0 }; 
+        Add-Candidate 'Name:yyyy-MM-dd' $dt $m.Value 
+    }
     return @($candidates.ToArray())
 }
 
 function Get-DatesFromMetadata($filePath) {
+    <#
+    .SYNOPSIS
+        Extracts date information from Windows Shell metadata properties.
+    
+    .DESCRIPTION
+        Uses Windows Shell COM object to access file metadata properties
+        including MediaCreated, DateCreated, and DateModified timestamps.
+        This provides an additional source of date information beyond
+        filename patterns and EXIF data.
+    
+    .PARAMETER filePath
+        The full path to the file to analyze.
+    
+    .RETURNS
+        Array of PSCustomObject with Source, Date, and Raw properties.
+    
+    .NOTES
+        Uses Windows Shell COM object which may not be available in all environments.
+        Properly disposes of COM objects to prevent memory leaks.
+    #>
     $dates = New-Object System.Collections.Generic.List[object]
     try {
         $shell = New-Object -ComObject Shell.Application
@@ -215,14 +595,31 @@ function Get-DatesFromMetadata($filePath) {
         if ($folder) {
             $item = $folder.ParseName((Split-Path $filePath -Leaf))
             if ($item) {
-                $tryProp = { param($idx, $label) $s = $folder.GetDetailsOf($item, $idx); if ($s -and $s.Trim() -ne '') { $dt = $null; if ([datetime]::TryParse($s, [ref]$dt)) { return @([pscustomobject]@{Source = "Meta:$label"; Date = $dt; Raw = $s }) } }; return @() }
+                # Helper function to try extracting a specific property
+                $tryProp = { 
+                    param($idx, $label) 
+                    $s = $folder.GetDetailsOf($item, $idx); 
+                    if ($s -and $s.Trim() -ne '') { 
+                        $dt = $null; 
+                        if ([datetime]::TryParse($s, [ref]$dt)) { 
+                            return @([pscustomobject]@{Source = "Meta:$label"; Date = $dt; Raw = $s }) 
+                        } 
+                    }; 
+                    return @() 
+                }
+                
+                # Try to extract various metadata properties
                 $r = & $tryProp 208 'MediaCreated'; if ($r) { $dates.AddRange($r) }
                 $r = & $tryProp 12 'DateCreated'; if ($r) { $dates.AddRange($r) }
                 $r = & $tryProp 13 'DateModified'; if ($r) { $dates.AddRange($r) }
             }
         }
     }
-    catch {} finally { if ($shell) { [Runtime.InteropServices.Marshal]::ReleaseComObject($shell) | Out-Null } }
+    catch {} 
+    finally { 
+        # Properly dispose of COM object to prevent memory leaks
+        if ($shell) { [Runtime.InteropServices.Marshal]::ReleaseComObject($shell) | Out-Null } 
+    }
     try { $fs = Get-Item $filePath; $dates.Add([pscustomobject]@{Source = 'FS:CreationTime'; Date = $fs.CreationTime; Raw = $fs.CreationTime }); $dates.Add([pscustomobject]@{Source = 'FS:LastWriteTime'; Date = $fs.LastWriteTime; Raw = $fs.LastWriteTime }); $dates.Add([pscustomobject]@{Source = 'FS:LastAccessTime'; Date = $fs.LastAccessTime; Raw = $fs.LastAccessTime }) } catch {}
     return @($dates.ToArray())
 }
@@ -290,29 +687,73 @@ function Get-DatesFromFolders($file, [string]$DefaultTimeForDateOnly = '00:00:00
 }
 
 function Get-OldestDate($file, [switch]$Verbose) {
+    <#
+    .SYNOPSIS
+        Determines the best date for a file from multiple sources using priority-based selection.
+    
+    .DESCRIPTION
+        Collects dates from all available sources (filename patterns, metadata, external tools,
+        file system, and folder names) and selects the most reliable date based on a priority system.
+        
+        Priority Order (highest to lowest):
+        1. Filename patterns with time information (e.g., yyyyMMdd_HHmmss)
+        2. Filename patterns with date only (e.g., yyyyMMdd)
+        3. External tool metadata (ExifTool, FFprobe, MediaInfo, Windows Shell)
+        4. File system timestamps (CreationTime, LastWriteTime, LastAccessTime)
+        5. Folder year extraction
+        
+        Within each priority level, the earliest date is selected.
+    
+    .PARAMETER file
+        FileInfo object representing the file to analyze.
+    
+    .PARAMETER Verbose
+        Switch to enable debug output showing date collection and selection process.
+    
+    .RETURNS
+        PSCustomObject with Source, Date, and Raw properties, or null if no valid date found.
+    
+    .EXAMPLE
+        $date = Get-OldestDate -file $fileInfo -Verbose
+    #>
     $collected = New-Object System.Collections.Generic.List[object]
     try {
+        # Collect dates from all available sources
         $fn = Get-DatesFromFilename $file.BaseName -Verbose:$Verbose; if ($fn) { $collected.AddRange(@($fn)) }
         $md = Get-DatesFromMetadata $file.FullName; if ($md) { $collected.AddRange(@($md)) }
+        
+        # Collect dates from external tools
         $ext = New-Object System.Collections.Generic.List[object]
         $ff = Get-DateFromFfprobe $file.FullName; if ($ff) { $ext.AddRange(@($ff)) }
         $ex = Get-DateFromExifTool $file.FullName; if ($ex) { $ext.AddRange(@($ex)) }
         $mi = Get-DateFromMediaInfo $file.FullName; if ($mi) { $ext.AddRange(@($mi)) }
         if ($ext.Count -gt 0) { $collected.AddRange(@($ext)); if ($Verbose) { Write-Host ("DEBUG: External dates: {0}" -f $ext.Count) } }
+        
+        # Collect dates from folder structure
         $fd = Get-DatesFromFolders $file -Verbose:$Verbose; if ($fd) { $collected.AddRange(@($fd)) }
     }
     catch {}
+    
+    # Filter out invalid dates (before 1990 or in the future)
     $minDate = Get-Date -Year 1990 -Month 1 -Day 1; $maxDate = Get-Date
     $collected = $collected | Where-Object { $_.Date -ge $minDate -and $_.Date -le $maxDate }
     if ($collected.Count -eq 0) { return $null }
+    
+    # Priority function for date source selection
     function Get-SourcePriority {
         param([string]$source)
-        if ($source -like 'Name:*') { return 0 }
-        if ($source -like 'ExifTool:*' -or $source -like 'FFProbe:*' -or $source -like 'MediaInfo:*' -or $source -like 'Meta:*') { return 1 }
-        if ($source -like 'FS:*') { return 2 }
-        if ($source -like 'Folder:*') { return 3 }
+        if ($source -like 'Name:*') { 
+            # Prefer patterns with time over patterns without time
+            if ($source -like '*HHmmss*' -or $source -like '*HH:mm*' -or $source -like '*HH_mm*') { return 0 }
+            return 1  # Date-only patterns get lower priority
+        }
+        if ($source -like 'ExifTool:*' -or $source -like 'FFProbe:*' -or $source -like 'MediaInfo:*' -or $source -like 'Meta:*') { return 2 }
+        if ($source -like 'FS:*') { return 3 }
+        if ($source -like 'Folder:*') { return 4 }
         return 9
     }
+    
+    # Select the best date based on priority and chronological order
     $selected = $collected | Sort-Object @{ Expression = { Get-SourcePriority $_.Source } }, Date | Select-Object -First 1
     if ($Verbose) { Write-Host ("DEBUG: Chosen date {0:u} from {1}" -f $selected.Date, $selected.Source) }
     return $selected
@@ -431,17 +872,14 @@ function Invoke-PhotoRename {
     foreach ($photo in $photos) {
         $filename = $photo.Name
         $origCreation = $photo.CreationTime; $origWrite = $photo.LastWriteTime; $origAccess = $photo.LastAccessTime
-        # Already good names: yyyy_MM_dd_####.jpg or yyyy-MM-dd_HH-mm-ss.jpg
-        $good = $false
-        foreach ($p in @('^\d{4}_\d{2}_\d{2}_\d{4}\.jpg$', '^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.jpg$')) { if ($filename -match $p) { $good = $true; break } }
-        if ($good) { Write-Host "⏭️ Skipped (already good format): $filename"; continue }
+        # All files will be renamed to standardized format: yyyy-MM-dd_HHmmss_###.jpg (same as videos)
         $originalExt = $photo.Extension.ToLower()
         $targetPath = $photo.FullName
         $outputExt = if ($toJpeg) { '.jpg' } else { $originalExt }
         $dateTaken = Get-PhotoTakenDate -Path $photo.FullName -Timezone 'local'
         Add-Content -Path $warningLog -Value ("Processing: {0}" -f $photo.Name)
         $formattedDate = $null
-        try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd_HH-mm-ss') } } catch { $formattedDate = $null }
+        try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd_HHmmss') } } catch { $formattedDate = $null }
         if (-not $formattedDate) { $formattedDate = 'Unknown' }
         # Convert to jpg if requested and source isn't already JPEG
         if ($toJpeg -and $originalExt -notin @('.jpg', '.jpeg')) {
@@ -452,9 +890,9 @@ function Invoke-PhotoRename {
                 catch { Write-Host ("ERROR convert: {0}" -f $_.Exception.Message) }
             }
         }
-        # Sequential filename
-        $index = 1; $newName = ("{0}_{1:D3}{2}" -f $formattedDate, $index, $outputExt)
-        while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $index++; $newName = ("{0}_{1:D3}{2}" -f $formattedDate, $index, $outputExt) }
+        # Sequential filename (same format as videos: yyyy-MM-dd_HHmmss_#)
+        $baseName = $formattedDate; $newName = ("{0}{1}" -f $baseName, $outputExt)
+        $suf = 1; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1}{2}" -f $baseName, $suf, $outputExt); $suf++ }
         $newPath = Join-Path (Split-Path $targetPath -Parent) $newName
         if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) → $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} → {1}" -f (Split-Path $targetPath -Leaf), $newName) }
         else {
@@ -907,7 +1345,8 @@ function Invoke-VideoConvertLean {
                 if ($LASTEXITCODE -ne 0) { throw "Both GPU and CPU encoding failed (last code ${LASTEXITCODE})" }
                 $countEncoded++; $countCpu++
             }
-            if (Test-Path $finalOut) { $finalOut = Get-UniquePath -Path $finalOut }
+            # Delete original file first, then move converted file to final location
+            try { Remove-Item -LiteralPath $inputPath -Force; $countDeleted++; Write-Host ("Deleted source: {0}" -f $inputPath) } catch { Write-Host ("WARN: Failed to delete source: {0}" -f $_.Exception.Message) }
             Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
             $outSize = (Get-Item -LiteralPath $finalOut).Length; $outSizeStr = Format-Bytes $outSize; $totalOutBytes += $outSize
             $delta = [long]($srcSize - $outSize); $deltaStr = Format-Bytes ([math]::Abs($delta))
@@ -915,7 +1354,6 @@ function Invoke-VideoConvertLean {
             $sizeLine = "Size: $srcSizeStr → $outSizeStr (Δ $deltaStr, ${pct}% change)"
             Write-Host $sizeLine; Add-Content $logFile $sizeLine
             if ($preserve) { Set-OutputTimestampFromSource -Target $finalOut -Source $inputPath -Ffprobe $ffprobe }
-            try { Remove-Item -LiteralPath $inputPath -Force; $countDeleted++; Write-Host ("Deleted source: {0}" -f $inputPath) } catch { Write-Host ("WARN: Failed to delete source: {0}" -f $_.Exception.Message) }
         }
         catch { $countErrors++; Write-Host ("ERROR: {0}" -f $_.Exception.Message); if (Test-Path $tempOut) { try { Remove-Item -LiteralPath $tempOut -Force }catch {} } }
     }
@@ -942,7 +1380,28 @@ function Invoke-VideoConvertLean {
     }
 }
 
-# === Main loop ===
+# =============================================================================
+# MAIN APPLICATION EXECUTION
+# =============================================================================
+# 
+# This section contains the main application loop that handles user interaction
+# and routes to the appropriate functions based on user selection.
+#
+# The application follows this general flow:
+# 1. Display header and tool status
+# 2. Show menu with detailed descriptions
+# 3. Get user input and validate
+# 4. Execute selected operation
+# 5. Return to menu or exit
+#
+# Each operation function handles its own:
+# - User input collection
+# - File scanning and filtering
+# - Processing logic
+# - Logging and rollback map generation
+# - Error handling and reporting
+
+# === Main Application Loop ===
 $exitRequested = $false
 do {
     Show-Menu

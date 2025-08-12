@@ -3,7 +3,7 @@
 A comprehensive PowerShell utility for organizing and processing local photos and videos with intelligent date extraction, GPU-accelerated video conversion, and safe rollback capabilities.
 
 **Author:** Ryan Zeffiretti  
-**Version:** 1.0.0  
+**Version:** 1.1.0 (Latest Release)  
 **License:** MIT
 
 ## Why MediaOrganizer?
@@ -74,15 +74,14 @@ I created this script to solve the common problem of disorganized media files. M
 
 ## Getting Started
 
-### Option 1: PowerShell Script
+### Option 1: Run the PowerShell Script
+
+1. Download the source (Code → Download ZIP) or from Releases
+2. Extract to a folder of your choice
+3. Place required tools in `tools/` or ensure they’re on PATH
+4. Run:
 
 ```powershell
-# Clone the repository
-git clone https://github.com/Zeffer83/media-organizer.git
-cd media-organizer
-
-# Place required tools in tools/ folder or add to PATH
-# Run the script
 pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\MediaOrganizer.ps1
 ```
 
@@ -97,16 +96,35 @@ Download the latest release EXE from the [Releases](https://github.com/Zeffer83/
 ## Menu Overview
 
 ```
-MediaOrganizer v1.0.0
+MediaOrganizer v1.1.0
 Author: Ryan Zeffiretti
+------------------------------------------------------------
+Organize and process your media:
+ • Rename: Standardize filenames to yyyy-MM-dd_HHmmss with safe collisions.
+   Sources for date (priority): Name, Exif/FFprobe/MediaInfo/Meta, File System, Folder year.
+   For date-only matches the time defaults to 00:00:00.
+ • Convert: Try GPU HEVC (NVENC/QSV/AMF) first, fallback to CPU x265; preserve timestamps if selected.
+   Balanced preset auto-sets bitrate from source (≤720p:50%, ≤1080p:60%, ≤1440p:65%, else:70%, floored at 300k).
+   GPU HQ improves GPU quality (slower). CPU x265 is slowest but highest efficiency/quality.
 
-1. Rename videos (standardize filenames with extracted dates)
-2. Convert videos (GPU→CPU encoding with quality presets)
-3. Rename photos (organize photo files by date)
-4. Roll back last video rename (undo video renames)
-5. Roll back last photo rename (undo photo renames)
-0. Exit
-
+1) Rename videos
+   - Dry-run by default. Logs: logs/RenameVideos.log, map: maps/VideosRenameMap.csv
+   - Optional: update embedded metadata and/or file system times.
+   - Supported: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .mpg, .mts
+2) Convert videos (GPU→CPU)
+   - Logs: Convert-Videos.log. Backup under <source>/backup (skipped on scan).
+   - Options: skip HEVC, choose container (mp4/mkv), parallel jobs.
+   - Deletes source after successful encode (backup kept). Summary shows size saved.
+3) Rename photos (.jpg/.jpeg/.png/.heic/.bmp/.tiff)
+   - Dry-run by default. Preserves file timestamps after rename.
+   - Uses filename patterns, EXIF (exiftool), and file system dates; optional EXIF date update.
+   - Optional: convert non-JPEG to JPEG (requires ImageMagick `magick`).
+   - Logs: PhotoRename.log, warnings (chosen source): PhotoWarnings.log, map: PicturesRenameMap.csv
+4) Roll back last video rename
+   - Uses maps/VideosRenameMap.csv to restore original filenames (dry-run by default).
+5) Roll back last photo rename
+   - Uses maps/PicturesRenameMap.csv to restore original filenames (dry-run by default).
+0) Exit
 Select option:
 ```
 
@@ -115,7 +133,6 @@ Select option:
 - **Automatic backups:** Video conversion creates full backups under `<source>/backup` before processing
 - **Rollback maps:** All rename operations generate CSV maps for safe undo
 - **Comprehensive logging:** All operations logged under `logs/` folder
-- **Privacy protection:** Repository excludes personal media, test folders, and runtime files
 
 ## Common Filename Patterns Supported
 
@@ -127,20 +144,6 @@ Select option:
 - **iPhone:** `IMG_yyyyMMdd_HHmmss`, `IMG_yyyyMMdd_HHmmss_####`
 - **Samsung:** `Screenshot_yyyyMMdd-HHmmss`
 - **WhatsApp:** `IMG-yyyyMMdd-WA####`
-
-## Building from Source
-
-### Prerequisites
-
-- PowerShell 5.1+ or PowerShell 7+
-- PS2EXE module: `Install-Module ps2exe -Scope CurrentUser -Force`
-
-### Build Steps
-
-```powershell
-# Build the EXE
-pwsh -NoLogo -NoProfile -Command "Import-Module ps2exe -Force; Invoke-PS2EXE -InputFile .\MediaOrganizer.ps1 -OutputFile .\dist\MediaOrganizer.exe"
-```
 
 ## Important Disclaimers
 
