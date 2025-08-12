@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.2'
+$global:AppVersion = '1.2.3'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -814,22 +814,22 @@ function Invoke-VideoRename {
             $sequenceNum = $dateSequenceCounters[$baseName]
             $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $f.Extension.ToLower())
             $newPath = Join-Path $f.DirectoryName $newName
-            if ($f.FullName -eq $newPath) { "SKIP: $($f.Name)" | Tee-Object -FilePath $log -Append | Out-Null; $i++; continue }
-            if ($chosen) { "DECISION: $($f.Name) → $newName | Source=$($chosen.Source) | Date=$($chosen.Date.ToString('u')) | Raw=$($chosen.Raw)" | Tee-Object -FilePath $log -Append | Out-Null } else { "DECISION: $($f.Name) → $newName | Source=FallbackFolderIndex | No date found" | Tee-Object -FilePath $log -Append | Out-Null }
-            if ($dry) { "DRY-RUN: $($f.Name) → $newName" | Tee-Object -FilePath $log -Append | Out-Null }
+            if ($f.FullName -eq $newPath) { "SKIP: $($f.Name)" | Out-File -FilePath $log -Append -Encoding UTF8; $i++; continue }
+            if ($chosen) { "DECISION: $($f.Name) -> $newName | Source=$($chosen.Source) | Date=$($chosen.Date.ToString('u')) | Raw=$($chosen.Raw)" | Out-File -FilePath $log -Append -Encoding UTF8 } else { "DECISION: $($f.Name) -> $newName | Source=FallbackFolderIndex | No date found" | Out-File -FilePath $log -Append -Encoding UTF8 }
+            if ($dry) { "DRY-RUN: $($f.Name) -> $newName" | Out-File -FilePath $log -Append -Encoding UTF8 }
             else {
                 try {
                     $origW = $f.LastWriteTime; $origC = $f.CreationTime
                     Rename-Item $f.FullName $newPath
                     if ($updMeta -and $chosen) {
-                        try { $exif = Resolve-ExternalTool -CandidateNames @('exiftool.exe', 'exiftool') -RelativePaths @('tools\\exiftool.exe', 'tools\\exiftool(-k).exe'); if ($exif) { $ts = $chosen.Date.ToString('yyyy:MM:dd HH:mm:ss'); & $exif -overwrite_original -P ('-MediaCreateDate={0}' -f $ts) ('-CreateDate={0}' -f $ts) ('-TrackCreateDate={0}' -f $ts) ('-ModifyDate={0}' -f $ts) ('-FileCreateDate={0}' -f $ts) -- "$newPath" | Out-Null; "META-UPDATED: $newName -> $ts" | Tee-Object -FilePath $log -Append | Out-Null } else { "META-SKIP: exiftool not found" | Tee-Object -FilePath $log -Append | Out-Null } } catch { "META-ERROR: $newName | $($_.Exception.Message)" | Tee-Object -FilePath $log -Append | Out-Null }
+                        try { $exif = Resolve-ExternalTool -CandidateNames @('exiftool.exe', 'exiftool') -RelativePaths @('tools\\exiftool.exe', 'tools\\exiftool(-k).exe'); if ($exif) { $ts = $chosen.Date.ToString('yyyy:MM:dd HH:mm:ss'); & $exif -overwrite_original -P ('-MediaCreateDate={0}' -f $ts) ('-CreateDate={0}' -f $ts) ('-TrackCreateDate={0}' -f $ts) ('-ModifyDate={0}' -f $ts) ('-FileCreateDate={0}' -f $ts) -- "$newPath" | Out-Null; "META-UPDATED: $newName -> $ts" | Out-File -FilePath $log -Append -Encoding UTF8 } else { "META-SKIP: exiftool not found" | Out-File -FilePath $log -Append -Encoding UTF8 } } catch { "META-ERROR: $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 }
                     }
-                    if ($updFs -and $chosen) { try { $it = Get-Item $newPath; $it.CreationTime = $chosen.Date; $it.LastWriteTime = $chosen.Date; "FS-TIME-UPDATED: $newName -> $($chosen.Date.ToString('u'))" | Tee-Object -FilePath $log -Append | Out-Null } catch { "FS-TIME-ERROR: $newName | $($_.Exception.Message)" | Tee-Object -FilePath $log -Append | Out-Null } }
+                    if ($updFs -and $chosen) { try { $it = Get-Item $newPath; $it.CreationTime = $chosen.Date; $it.LastWriteTime = $chosen.Date; "FS-TIME-UPDATED: $newName -> $($chosen.Date.ToString('u'))" | Out-File -FilePath $log -Append -Encoding UTF8 } catch { "FS-TIME-ERROR: $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 } }
                     else { (Get-Item $newPath).LastWriteTime = $origW; (Get-Item $newPath).CreationTime = $origC }
                     "$($f.FullName)|$newPath" | Out-File $map -Append -Encoding UTF8
-                    "RENAMED: $($f.Name) → $newName" | Tee-Object -FilePath $log -Append | Out-Null
+                    "RENAMED: $($f.Name) -> $newName" | Out-File -FilePath $log -Append -Encoding UTF8
                 }
-                catch { "ERROR: $($f.FullName) → $newName | $($_.Exception.Message)" | Tee-Object -FilePath $log -Append | Out-Null }
+                catch { "ERROR: $($f.FullName) -> $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 }
             }
             $i++
         }
@@ -938,10 +938,10 @@ function Invoke-PhotoRename {
         $sequenceNum = $dateSequenceCounters[$baseName]
         $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $outputExt)
         $newPath = Join-Path (Split-Path $targetPath -Parent) $newName
-        if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) → $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} → {1}" -f (Split-Path $targetPath -Leaf), $newName) }
+        if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) -> $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} -> {1}" -f (Split-Path $targetPath -Leaf), $newName) }
         else {
-            try { Rename-Item -LiteralPath $targetPath -NewName $newName; if (Test-Path $newPath) { $finalItem = Get-Item $newPath; $finalItem.CreationTime = $origCreation; $finalItem.LastWriteTime = $origWrite; $finalItem.LastAccessTime = $origAccess }; Write-Host "✅ Renamed: $(Split-Path $targetPath -Leaf) → $newName"; Add-Content -Path $log -Value ("RENAMED: {0} → {1}" -f (Split-Path $targetPath -Leaf), $newName); $map.Add([pscustomobject]@{ Old = $photo.FullName; New = $newPath }) }
-            catch { Write-Host ("Rename failed: {0} → {1} — {2}" -f $targetPath, $newName, $_.Exception.Message) }
+            try { Rename-Item -LiteralPath $targetPath -NewName $newName; if (Test-Path $newPath) { $finalItem = Get-Item $newPath; $finalItem.CreationTime = $origCreation; $finalItem.LastWriteTime = $origWrite; $finalItem.LastAccessTime = $origAccess }; Write-Host "✅ Renamed: $(Split-Path $targetPath -Leaf) -> $newName"; Add-Content -Path $log -Value ("RENAMED: {0} -> {1}" -f (Split-Path $targetPath -Leaf), $newName); $map.Add([pscustomobject]@{ Old = $photo.FullName; New = $newPath }) }
+                          catch { Write-Host ("Rename failed: {0} -> {1} - {2}" -f $targetPath, $newName, $_.Exception.Message) }
         }
 
         if (-not $dry -and $updMeta -and $formattedDate -and (Test-Path -LiteralPath $newPath)) {
