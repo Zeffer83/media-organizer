@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.4'
+$global:AppVersion = '1.1.5'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -547,7 +547,15 @@ function Get-DatesFromFilename($name, [switch]$Verbose) {
             $timeStr = $m.Groups['TIME'].Value
             $hour = $timeStr.Substring(0, 2)
             $minute = $timeStr.Substring(2, 2)
-            $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $hour + $minute + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
+            
+            # Validate time components
+            $hourInt = [int]$hour
+            $minuteInt = [int]$minute
+            
+            # If the time looks valid (hour 0-23, minute 0-59), use it
+            if ($hourInt -ge 0 -and $hourInt -le 23 -and $minuteInt -ge 0 -and $minuteInt -le 59) {
+                $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $hour + $minute + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
+            }
         } catch {}; 
         Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM_4digit' $dt $m.Value 
     }
@@ -902,17 +910,9 @@ function Invoke-PhotoRename {
         $formattedDate = $null
         try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd_HHmmss') } } catch { $formattedDate = $null }
         
-        # Debug: Check if the date has time information (not just 00:00:00)
-        if ($formattedDate -and $formattedDate -match '_000000$') {
-            # The date extraction worked but time is 00:00:00, so use fallback
-            $formattedDate = $null
-        }
-        
         if (-not $formattedDate) { 
-            # If we can't extract a proper date, use original filename base with random suffix
-            $randomSuffix = Get-Random -Minimum 1000 -Maximum 9999
-            $safeBaseName = $photo.BaseName -replace '[^a-zA-Z0-9_-]', '_'
-            $formattedDate = "${safeBaseName}_${randomSuffix}" 
+            # If we can't extract a proper date, use a simple fallback
+            $formattedDate = 'Unknown' 
         }
         # Convert to jpg if requested and source isn't already JPEG
         if ($toJpeg -and $originalExt -notin @('.jpg', '.jpeg')) {
