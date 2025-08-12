@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.5'
+$global:AppVersion = '1.2.6'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -536,7 +536,8 @@ function Get-DatesFromFilename($name, [switch]$Verbose) {
         $dt = $null; 
         try { 
             $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
-        } catch {}; 
+        }
+        catch {}; 
         Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM' $dt $m.Value 
     }
     
@@ -547,7 +548,8 @@ function Get-DatesFromFilename($name, [switch]$Verbose) {
             # Treat the 4-digit number as a sequence, not time
             # Use the date with 00:00:00 time and let the sequential suffix handle conflicts
             $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) 
-        } catch {}; 
+        }
+        catch {}; 
         Add-Candidate 'Name:Photo_yyyy_MM_dd_sequence' $dt $m.Value 
     }
     
@@ -808,7 +810,8 @@ function Invoke-VideoRename {
             # Sequential filename (same format as photos: yyyy-MM-dd_xxx)
             if (-not $dateSequenceCounters.ContainsKey($baseName)) {
                 $dateSequenceCounters[$baseName] = 1
-            } else {
+            }
+            else {
                 $dateSequenceCounters[$baseName]++
             }
             $sequenceNum = $dateSequenceCounters[$baseName]
@@ -828,15 +831,18 @@ function Invoke-VideoRename {
                                 # Skip metadata updates for MKV files (not well supported by exiftool)
                                 if ($f.Extension.ToLower() -eq '.mkv') {
                                     "META-SKIP: MKV files not supported for metadata updates - $newName" | Out-File -FilePath $log -Append -Encoding UTF8
-                                } else {
+                                }
+                                else {
                                     $ts = $chosen.Date.ToString('yyyy:MM:dd HH:mm:ss')
                                     & $exif -overwrite_original -P ('-MediaCreateDate={0}' -f $ts) ('-CreateDate={0}' -f $ts) ('-TrackCreateDate={0}' -f $ts) ('-ModifyDate={0}' -f $ts) ('-FileCreateDate={0}' -f $ts) -- "$newPath" | Out-Null
                                     "META-UPDATED: $newName -> $ts" | Out-File -FilePath $log -Append -Encoding UTF8
                                 }
-                            } else { 
+                            }
+                            else { 
                                 "META-SKIP: exiftool not found" | Out-File -FilePath $log -Append -Encoding UTF8 
                             } 
-                        } catch { 
+                        }
+                        catch { 
                             "META-ERROR: $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 
                         }
                     }
@@ -948,7 +954,8 @@ function Invoke-PhotoRename {
         # Sequential filename (same format as videos: yyyy-MM-dd_xxx)
         if (-not $dateSequenceCounters.ContainsKey($baseName)) {
             $dateSequenceCounters[$baseName] = 1
-        } else {
+        }
+        else {
             $dateSequenceCounters[$baseName]++
         }
         $sequenceNum = $dateSequenceCounters[$baseName]
@@ -957,7 +964,7 @@ function Invoke-PhotoRename {
         if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) -> $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} -> {1}" -f (Split-Path $targetPath -Leaf), $newName) }
         else {
             try { Rename-Item -LiteralPath $targetPath -NewName $newName; if (Test-Path $newPath) { $finalItem = Get-Item $newPath; $finalItem.CreationTime = $origCreation; $finalItem.LastWriteTime = $origWrite; $finalItem.LastAccessTime = $origAccess }; Write-Host "✅ Renamed: $(Split-Path $targetPath -Leaf) -> $newName"; Add-Content -Path $log -Value ("RENAMED: {0} -> {1}" -f (Split-Path $targetPath -Leaf), $newName); $map.Add([pscustomobject]@{ Old = $photo.FullName; New = $newPath }) }
-                          catch { Write-Host ("Rename failed: {0} -> {1} - {2}" -f $targetPath, $newName, $_.Exception.Message) }
+            catch { Write-Host ("Rename failed: {0} -> {1} - {2}" -f $targetPath, $newName, $_.Exception.Message) }
         }
 
         if (-not $dry -and $updMeta -and $formattedDate -and (Test-Path -LiteralPath $newPath)) {
@@ -1237,9 +1244,8 @@ function Invoke-VideoConvertLean {
                         if ($LASTEXITCODE -ne 0) { throw "Both GPU and CPU encoding failed (last code ${LASTEXITCODE})" } else { $encoded = $true }
                     }
 
-                    # Ensure unique final path
-                    $candidate = $finalOut; $i = 1; while (Test-Path -LiteralPath $candidate) { $candidate = Join-Path ([IO.Path]::GetDirectoryName($finalOut)) ("{0} ({1}){2}" -f ([IO.Path]::GetFileNameWithoutExtension($finalOut)), $i, ([IO.Path]::GetExtension($finalOut))); $i++ }
-                    $finalOut = $candidate
+                    # Since we have a backup, we can overwrite the original file directly
+                    # No need to generate unique names with (1) suffix
                     Move-Item -LiteralPath $tempOut -Destination $finalOut -Force
                     $messages.Add(("Wrote: {0}" -f $finalOut))
 

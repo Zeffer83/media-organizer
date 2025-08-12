@@ -3,7 +3,7 @@
 A comprehensive PowerShell utility for organizing and processing local photos and videos with intelligent date extraction, GPU-accelerated video conversion, and safe rollback capabilities.
 
 **Author:** Ryan Zeffiretti  
-**Version:** 1.2.4 (Latest Release)  
+**Version:** 1.2.5 (Latest Release)  
 **License:** MIT
 
 ## Why MediaOrganizer?
@@ -100,7 +100,7 @@ Download the latest release EXE from the [Releases](https://github.com/Zeffer83/
 ## Menu Overview
 
 ```
-MediaOrganizer v1.2.4
+MediaOrganizer v1.2.5
 Author: Ryan Zeffiretti
 ------------------------------------------------------------
 Organize and process your media:
@@ -157,10 +157,12 @@ Select option:
 ### Examples:
 
 **Before (v1.1.x):**
+
 - `IMG_20231201_143022.jpg` → `2023-12-01_143022.jpg`
 - `DJI_20231201_143022.mp4` → `2023-12-01_143022.mp4`
 
 **After (v1.2.x):**
+
 - `IMG_20231201_143022.jpg` → `2023-12-01_001.jpg`
 - `DJI_20231201_143022.mp4` → `2023-12-01_001.mp4`
 - `IMG_20231201_143023.jpg` → `2023-12-01_002.jpg` (same date, next sequence)
@@ -185,30 +187,42 @@ Select option:
 
 ## Recent Changes
 
-### v1.2.4 (Latest)
+### v1.2.5 (Latest)
+
+- **Fixed video conversion naming:** Eliminated "(1)" suffix on converted video files
+- **Improved file handling:** Since backups are created before conversion, original files are now overwritten directly
+- **Cleaner output:** Converted videos maintain original filenames without numbered suffixes
+
+### v1.2.4
+
 - **Fixed MKV metadata errors:** Added check to skip metadata updates for MKV files (limited exiftool support)
 - **Improved log formatting:** Replaced Tee-Object with Out-File for cleaner log output
 - **Better error handling:** Prevents "Writing of MKV files is not yet supported" errors
 
 ### v1.2.3
+
 - **Fixed log file formatting:** Replaced special characters with standard ASCII for better compatibility
 - **Cleaner output:** Eliminated wide character spacing issues in log files
 
 ### v1.2.2
+
 - **Fixed video sequence numbering:** Added date sequence counters to video rename function
 - **Consistent naming:** Videos now get proper `_001`, `_002`, etc. suffixes like photos
 
 ### v1.2.1
+
 - **Fixed photo sequence numbering:** Added date sequence counters to prevent overwrites
 - **Improved reliability:** Each file with same date gets unique sequence number
 
 ### v1.2.0 (Major Update)
+
 - **Unified naming schema:** Both photos and videos now use `yyyy-MM-dd_xxx.ext` format
 - **Removed time component:** Cleaner filenames without `HHmmss` time component
 - **Automatic sequence numbering:** Files with same date get `_001`, `_002`, `_003`, etc.
 - **Simplified logic:** Removed complex time extraction and validation
 
 ### v1.1.x (Previous)
+
 - **Original format:** `yyyy-MM-dd_HHmmss.ext` with time component
 - **Complex time handling:** Attempted to extract time from various sources
 - **Inconsistent results:** Issues with sequence numbers being treated as time
