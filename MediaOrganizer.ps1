@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.4'
+$global:AppVersion = '1.2.5'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -920,7 +920,7 @@ function Invoke-PhotoRename {
     foreach ($photo in $photos) {
         $filename = $photo.Name
         $origCreation = $photo.CreationTime; $origWrite = $photo.LastWriteTime; $origAccess = $photo.LastAccessTime
-        # All files will be renamed to standardized format: yyyy-MM-dd_HHmmss_###.jpg (same as videos)
+        # All files will be renamed to standardized format: yyyy-MM-dd_xxx.jpg (same as videos)
         $originalExt = $photo.Extension.ToLower()
         $targetPath = $photo.FullName
         $outputExt = if ($toJpeg) { '.jpg' } else { $originalExt }

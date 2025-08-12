@@ -3,7 +3,7 @@
 A comprehensive PowerShell utility for organizing and processing local photos and videos with intelligent date extraction, GPU-accelerated video conversion, and safe rollback capabilities.
 
 **Author:** Ryan Zeffiretti  
-**Version:** 1.1.1 (Latest Release)  
+**Version:** 1.2.4 (Latest Release)  
 **License:** MIT
 
 ## Why MediaOrganizer?
@@ -22,9 +22,10 @@ I created this script to solve the common problem of disorganized media files. M
 ### Video Rename
 
 - **Intelligent date extraction** from multiple sources with priority-based selection
-- **Collision-safe renaming** with automatic suffix generation
+- **Unified naming schema:** All videos use `yyyy-MM-dd_xxx.ext` format (date + sequence number)
+- **Automatic sequence numbering:** Files with same date get `_001`, `_002`, `_003`, etc.
 - **Date sources (priority order):** Filename patterns → EXIF/FFprobe/MediaInfo → File system → Folder year
-- **Smart defaults:** Date-only matches default to `00:00:00` for consistency
+- **Smart metadata handling:** Skips MKV files (limited exiftool support) while updating other formats
 - **Optional metadata updates:** Update embedded EXIF data and file system timestamps
 - **Complete audit trail:** Rollback maps written to `maps/VideosRenameMap.csv`
 
@@ -47,7 +48,10 @@ I created this script to solve the common problem of disorganized media files. M
 ### Photo Rename
 
 - **Wide format support:** jpg/jpeg/png/heic/bmp/tiff
+- **Unified naming schema:** All photos use `yyyy-MM-dd_xxx.ext` format (date + sequence number)
+- **Automatic sequence numbering:** Files with same date get `_001`, `_002`, `_003`, etc.
 - **Multi-source date extraction:** filename patterns → EXIF (exiftool) → file system → folder year
+- **Smart time handling:** Treats 4-digit suffixes as sequence numbers, not time
 - **Optional EXIF updates:** Update DateTimeOriginal/CreateDate/ModifyDate to chosen date
 - **Format conversion:** Optional conversion of non-JPEG images to JPEG (ImageMagick)
 - **Timestamp preservation:** Maintains original file timestamps after rename
@@ -96,13 +100,13 @@ Download the latest release EXE from the [Releases](https://github.com/Zeffer83/
 ## Menu Overview
 
 ```
-MediaOrganizer v1.1.1
+MediaOrganizer v1.2.4
 Author: Ryan Zeffiretti
 ------------------------------------------------------------
 Organize and process your media:
- • Rename: Standardize filenames to yyyy-MM-dd_HHmmss with safe collisions.
+ • Rename: Standardize filenames to yyyy-MM-dd_xxx format with automatic sequence numbering.
    Sources for date (priority): Name, Exif/FFprobe/MediaInfo/Meta, File System, Folder year.
-   For date-only matches the time defaults to 00:00:00.
+   Files with same date get _001, _002, _003, etc. No time component in filenames.
  • Convert: Try GPU HEVC (NVENC/QSV/AMF) first, fallback to CPU x265; preserve timestamps if selected.
    Balanced preset auto-sets bitrate from source (≤720p:50%, ≤1080p:60%, ≤1440p:65%, else:70%, floored at 300k).
    GPU HQ improves GPU quality (slower). CPU x265 is slowest but highest efficiency/quality.
@@ -110,6 +114,7 @@ Organize and process your media:
 1) Rename videos
    - Dry-run by default. Logs: logs/RenameVideos.log, map: maps/VideosRenameMap.csv
    - Optional: update embedded metadata and/or file system times.
+   - Smart metadata handling: skips MKV files (limited exiftool support).
    - Supported: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .mpg, .mts
 2) Convert videos (GPU→CPU)
    - Logs: Convert-Videos.log. Backup under <source>/backup (skipped on scan).
@@ -118,6 +123,7 @@ Organize and process your media:
 3) Rename photos (.jpg/.jpeg/.png/.heic/.bmp/.tiff)
    - Dry-run by default. Preserves file timestamps after rename.
    - Uses filename patterns, EXIF (exiftool), and file system dates; optional EXIF date update.
+   - Smart time handling: treats 4-digit suffixes as sequence numbers, not time.
    - Optional: convert non-JPEG to JPEG (requires ImageMagick `magick`).
    - Logs: PhotoRename.log, warnings (chosen source): PhotoWarnings.log, map: PicturesRenameMap.csv
 4) Roll back last video rename
@@ -134,16 +140,78 @@ Select option:
 - **Rollback maps:** All rename operations generate CSV maps for safe undo
 - **Comprehensive logging:** All operations logged under `logs/` folder
 
+## Naming Schema Changes (v1.2.0+)
+
+### Unified Format: `yyyy-MM-dd_xxx.ext`
+
+**Previous format (v1.1.x):** `yyyy-MM-dd_HHmmss.ext` with time component
+**Current format (v1.2.x):** `yyyy-MM-dd_xxx.ext` with sequence numbers
+
+### Why the Change?
+
+1. **Simplified naming:** Removed time component for cleaner, more readable filenames
+2. **Better organization:** Files sort naturally by date in file explorers
+3. **Consistent handling:** Both photos and videos use identical naming logic
+4. **Improved reliability:** Eliminates issues with invalid time extraction from sequence numbers
+
+### Examples:
+
+**Before (v1.1.x):**
+- `IMG_20231201_143022.jpg` → `2023-12-01_143022.jpg`
+- `DJI_20231201_143022.mp4` → `2023-12-01_143022.mp4`
+
+**After (v1.2.x):**
+- `IMG_20231201_143022.jpg` → `2023-12-01_001.jpg`
+- `DJI_20231201_143022.mp4` → `2023-12-01_001.mp4`
+- `IMG_20231201_143023.jpg` → `2023-12-01_002.jpg` (same date, next sequence)
+
+### Sequence Numbering:
+
+- **First file with a date:** Gets `_001`
+- **Subsequent files with same date:** Get `_002`, `_003`, `_004`, etc.
+- **Different dates:** Each date gets its own sequence starting from `_001`
+
 ## Common Filename Patterns Supported
 
 - **Standard formats:** `yyyyMMdd_HHmmss`, `yyyy-MM-dd HH-mm-ss`, `yyyyMMddHHmmss`
 - **Date-only:** `yyyy-MM-dd` (time defaults to 00:00:00)
+- **Sequence numbers:** `yyyy_MM_dd_XXXX` (treated as sequence, not time)
 - **DJI drones:** `DJI_yyyyMMddHHmmss`, `dji_fly_yyyyMMdd_HHmmss`
 - **Google/Pixel:** `PXL_yyyyMMdd_HHmmss####`
 - **Windows Phone:** `WP_yyyyMMdd_HH_mm_ss`
 - **iPhone:** `IMG_yyyyMMdd_HHmmss`, `IMG_yyyyMMdd_HHmmss_####`
 - **Samsung:** `Screenshot_yyyyMMdd-HHmmss`
 - **WhatsApp:** `IMG-yyyyMMdd-WA####`
+
+## Recent Changes
+
+### v1.2.4 (Latest)
+- **Fixed MKV metadata errors:** Added check to skip metadata updates for MKV files (limited exiftool support)
+- **Improved log formatting:** Replaced Tee-Object with Out-File for cleaner log output
+- **Better error handling:** Prevents "Writing of MKV files is not yet supported" errors
+
+### v1.2.3
+- **Fixed log file formatting:** Replaced special characters with standard ASCII for better compatibility
+- **Cleaner output:** Eliminated wide character spacing issues in log files
+
+### v1.2.2
+- **Fixed video sequence numbering:** Added date sequence counters to video rename function
+- **Consistent naming:** Videos now get proper `_001`, `_002`, etc. suffixes like photos
+
+### v1.2.1
+- **Fixed photo sequence numbering:** Added date sequence counters to prevent overwrites
+- **Improved reliability:** Each file with same date gets unique sequence number
+
+### v1.2.0 (Major Update)
+- **Unified naming schema:** Both photos and videos now use `yyyy-MM-dd_xxx.ext` format
+- **Removed time component:** Cleaner filenames without `HHmmss` time component
+- **Automatic sequence numbering:** Files with same date get `_001`, `_002`, `_003`, etc.
+- **Simplified logic:** Removed complex time extraction and validation
+
+### v1.1.x (Previous)
+- **Original format:** `yyyy-MM-dd_HHmmss.ext` with time component
+- **Complex time handling:** Attempted to extract time from various sources
+- **Inconsistent results:** Issues with sequence numbers being treated as time
 
 ## Important Disclaimers
 
