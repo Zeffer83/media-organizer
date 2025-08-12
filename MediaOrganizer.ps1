@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.8'
+$global:AppVersion = '1.2.0'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -801,9 +801,9 @@ function Invoke-VideoRename {
         Write-Host ("Processing folder: {0} ({1} files)" -f $g.Name, $g.Group.Count)
         $i = 1; foreach ($f in $g.Group) {
             $chosen = Get-OldestDate $f -Verbose:$verbose
-            $baseName = if ($null -ne $chosen) { $chosen.Date.ToString('yyyy-MM-dd_HHmmss') } else { (ConvertTo-SafeFileName (Split-Path $f.DirectoryName -Leaf)) + "_" + $i }
+            $baseName = if ($null -ne $chosen) { $chosen.Date.ToString('yyyy-MM-dd') } else { (ConvertTo-SafeFileName (Split-Path $f.DirectoryName -Leaf)) + "_" + $i }
             $newName = "$baseName$($f.Extension.ToLower())"; $newPath = Join-Path $f.DirectoryName $newName
-            $suf = 1; while (Test-Path $newPath) { $newName = "{0}_{1}{2}" -f $baseName, $suf, $f.Extension.ToLower(); $newPath = Join-Path $f.DirectoryName $newName; $suf++ }
+            $suf = 1; while (Test-Path $newPath) { $newName = "{0}_{1:D3}{2}" -f $baseName, $suf, $f.Extension.ToLower(); $newPath = Join-Path $f.DirectoryName $newName; $suf++ }
             if ($f.FullName -eq $newPath) { "SKIP: $($f.Name)" | Tee-Object -FilePath $log -Append | Out-Null; $i++; continue }
             if ($chosen) { "DECISION: $($f.Name) → $newName | Source=$($chosen.Source) | Date=$($chosen.Date.ToString('u')) | Raw=$($chosen.Raw)" | Tee-Object -FilePath $log -Append | Out-Null } else { "DECISION: $($f.Name) → $newName | Source=FallbackFolderIndex | No date found" | Tee-Object -FilePath $log -Append | Out-Null }
             if ($dry) { "DRY-RUN: $($f.Name) → $newName" | Tee-Object -FilePath $log -Append | Out-Null }
@@ -889,7 +889,6 @@ function Invoke-PhotoRename {
     $photos = Get-ChildItem -Path $root -Recurse -File |
     Where-Object { $allowedExts -contains $_.Extension.ToLower() -and ($_.FullName -notlike (Join-Path $backupRootNorm '*')) }
     $map = New-Object System.Collections.Generic.List[object]
-    $dateSequenceCounters = @{}  # Track sequence numbers for each date
     
     foreach ($photo in $photos) {
         $filename = $photo.Name
@@ -901,18 +900,11 @@ function Invoke-PhotoRename {
         $dateTaken = Get-PhotoTakenDate -Path $photo.FullName -Timezone 'local'
         Add-Content -Path $warningLog -Value ("Processing: {0}" -f $photo.Name)
         $formattedDate = $null
-        try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd_HHmmss') } } catch { $formattedDate = $null }
+        try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd') } } catch { $formattedDate = $null }
         
         if (-not $formattedDate) { 
             # If we can't extract a proper date, use a simple fallback
             $formattedDate = 'Unknown' 
-        }
-        
-        # Check if we have _000000 time and replace with sequence
-        if ($formattedDate -and $formattedDate -match '_000000$') {
-            # Replace _000000 with _seq where seq is a sequence number
-            $datePart = $formattedDate -replace '_000000$', ''
-            $formattedDate = $datePart
         }
         # Convert to jpg if requested and source isn't already JPEG
         if ($toJpeg -and $originalExt -notin @('.jpg', '.jpeg')) {
@@ -926,21 +918,9 @@ function Invoke-PhotoRename {
         # Sequential filename (same format as videos: yyyy-MM-dd_HHmmss_#)
         $baseName = $formattedDate
         
-        # If we removed _000000, we need to add a sequence number
-        if ($formattedDate -match '^\d{4}-\d{2}-\d{2}$') {
-            # Date only (no time), add sequence number
-            if (-not $dateSequenceCounters.ContainsKey($baseName)) {
-                $dateSequenceCounters[$baseName] = 1
-            } else {
-                $dateSequenceCounters[$baseName]++
-            }
-            $sequenceNum = $dateSequenceCounters[$baseName]
-            $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $outputExt)
-        } else {
-            # Has time, use normal sequential logic
-            $newName = ("{0}{1}" -f $baseName, $outputExt)
-            $suf = 1; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1}{2}" -f $baseName, $suf, $outputExt); $suf++ }
-        }
+        # Sequential filename (same format as videos: yyyy-MM-dd_xxx)
+        $newName = ("{0}{1}" -f $baseName, $outputExt)
+        $suf = 1; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1:D3}{2}" -f $baseName, $suf, $outputExt); $suf++ }
         $newPath = Join-Path (Split-Path $targetPath -Parent) $newName
         if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) → $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} → {1}" -f (Split-Path $targetPath -Leaf), $newName) }
         else {
