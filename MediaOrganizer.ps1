@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.1'
+$global:AppVersion = '1.1.2'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -538,6 +538,18 @@ function Get-DatesFromFilename($name, [switch]$Verbose) {
             $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $m.Groups['H'].Value + $m.Groups['N'].Value + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
         } catch {}; 
         Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM' $dt $m.Value 
+    }
+    
+    # Photo with yyyy_MM_dd_HHMM format (4-digit time, e.g., 2016_08_03_4170)
+    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_(?<TIME>\d{4})$')) { 
+        $dt = $null; 
+        try { 
+            $timeStr = $m.Groups['TIME'].Value
+            $hour = $timeStr.Substring(0, 2)
+            $minute = $timeStr.Substring(2, 2)
+            $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $hour + $minute + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
+        } catch {}; 
+        Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM_4digit' $dt $m.Value 
     }
     
     # Photo with number suffix (date only) - fallback for patterns that don't match time
