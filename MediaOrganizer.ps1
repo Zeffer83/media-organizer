@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.3'
+$global:AppVersion = '1.2.4'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -822,7 +822,23 @@ function Invoke-VideoRename {
                     $origW = $f.LastWriteTime; $origC = $f.CreationTime
                     Rename-Item $f.FullName $newPath
                     if ($updMeta -and $chosen) {
-                        try { $exif = Resolve-ExternalTool -CandidateNames @('exiftool.exe', 'exiftool') -RelativePaths @('tools\\exiftool.exe', 'tools\\exiftool(-k).exe'); if ($exif) { $ts = $chosen.Date.ToString('yyyy:MM:dd HH:mm:ss'); & $exif -overwrite_original -P ('-MediaCreateDate={0}' -f $ts) ('-CreateDate={0}' -f $ts) ('-TrackCreateDate={0}' -f $ts) ('-ModifyDate={0}' -f $ts) ('-FileCreateDate={0}' -f $ts) -- "$newPath" | Out-Null; "META-UPDATED: $newName -> $ts" | Out-File -FilePath $log -Append -Encoding UTF8 } else { "META-SKIP: exiftool not found" | Out-File -FilePath $log -Append -Encoding UTF8 } } catch { "META-ERROR: $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 }
+                        try { 
+                            $exif = Resolve-ExternalTool -CandidateNames @('exiftool.exe', 'exiftool') -RelativePaths @('tools\\exiftool.exe', 'tools\\exiftool(-k).exe')
+                            if ($exif) { 
+                                # Skip metadata updates for MKV files (not well supported by exiftool)
+                                if ($f.Extension.ToLower() -eq '.mkv') {
+                                    "META-SKIP: MKV files not supported for metadata updates - $newName" | Out-File -FilePath $log -Append -Encoding UTF8
+                                } else {
+                                    $ts = $chosen.Date.ToString('yyyy:MM:dd HH:mm:ss')
+                                    & $exif -overwrite_original -P ('-MediaCreateDate={0}' -f $ts) ('-CreateDate={0}' -f $ts) ('-TrackCreateDate={0}' -f $ts) ('-ModifyDate={0}' -f $ts) ('-FileCreateDate={0}' -f $ts) -- "$newPath" | Out-Null
+                                    "META-UPDATED: $newName -> $ts" | Out-File -FilePath $log -Append -Encoding UTF8
+                                }
+                            } else { 
+                                "META-SKIP: exiftool not found" | Out-File -FilePath $log -Append -Encoding UTF8 
+                            } 
+                        } catch { 
+                            "META-ERROR: $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 
+                        }
                     }
                     if ($updFs -and $chosen) { try { $it = Get-Item $newPath; $it.CreationTime = $chosen.Date; $it.LastWriteTime = $chosen.Date; "FS-TIME-UPDATED: $newName -> $($chosen.Date.ToString('u'))" | Out-File -FilePath $log -Append -Encoding UTF8 } catch { "FS-TIME-ERROR: $newName | $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding UTF8 } }
                     else { (Get-Item $newPath).LastWriteTime = $origW; (Get-Item $newPath).CreationTime = $origC }
