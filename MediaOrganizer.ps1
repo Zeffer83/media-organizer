@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.7'
+$global:AppVersion = '1.1.8'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -889,6 +889,8 @@ function Invoke-PhotoRename {
     $photos = Get-ChildItem -Path $root -Recurse -File |
     Where-Object { $allowedExts -contains $_.Extension.ToLower() -and ($_.FullName -notlike (Join-Path $backupRootNorm '*')) }
     $map = New-Object System.Collections.Generic.List[object]
+    $dateSequenceCounters = @{}  # Track sequence numbers for each date
+    
     foreach ($photo in $photos) {
         $filename = $photo.Name
         $origCreation = $photo.CreationTime; $origWrite = $photo.LastWriteTime; $origAccess = $photo.LastAccessTime
@@ -927,8 +929,13 @@ function Invoke-PhotoRename {
         # If we removed _000000, we need to add a sequence number
         if ($formattedDate -match '^\d{4}-\d{2}-\d{2}$') {
             # Date only (no time), add sequence number
-            $newName = ("{0}_001{1}" -f $baseName, $outputExt)
-            $suf = 2; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1:D3}{2}" -f $baseName, $suf, $outputExt); $suf++ }
+            if (-not $dateSequenceCounters.ContainsKey($baseName)) {
+                $dateSequenceCounters[$baseName] = 1
+            } else {
+                $dateSequenceCounters[$baseName]++
+            }
+            $sequenceNum = $dateSequenceCounters[$baseName]
+            $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $outputExt)
         } else {
             # Has time, use normal sequential logic
             $newName = ("{0}{1}" -f $baseName, $outputExt)
