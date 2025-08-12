@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.6'
+$global:AppVersion = '1.1.7'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -905,6 +905,13 @@ function Invoke-PhotoRename {
             # If we can't extract a proper date, use a simple fallback
             $formattedDate = 'Unknown' 
         }
+        
+        # Check if we have _000000 time and replace with sequence
+        if ($formattedDate -and $formattedDate -match '_000000$') {
+            # Replace _000000 with _seq where seq is a sequence number
+            $datePart = $formattedDate -replace '_000000$', ''
+            $formattedDate = $datePart
+        }
         # Convert to jpg if requested and source isn't already JPEG
         if ($toJpeg -and $originalExt -notin @('.jpg', '.jpeg')) {
             $convertedPath = Join-Path $photo.DirectoryName ("{0}.jpg" -f $photo.BaseName)
@@ -915,8 +922,18 @@ function Invoke-PhotoRename {
             }
         }
         # Sequential filename (same format as videos: yyyy-MM-dd_HHmmss_#)
-        $baseName = $formattedDate; $newName = ("{0}{1}" -f $baseName, $outputExt)
-        $suf = 1; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1}{2}" -f $baseName, $suf, $outputExt); $suf++ }
+        $baseName = $formattedDate
+        
+        # If we removed _000000, we need to add a sequence number
+        if ($formattedDate -match '^\d{4}-\d{2}-\d{2}$') {
+            # Date only (no time), add sequence number
+            $newName = ("{0}_001{1}" -f $baseName, $outputExt)
+            $suf = 2; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1:D3}{2}" -f $baseName, $suf, $outputExt); $suf++ }
+        } else {
+            # Has time, use normal sequential logic
+            $newName = ("{0}{1}" -f $baseName, $outputExt)
+            $suf = 1; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1}{2}" -f $baseName, $suf, $outputExt); $suf++ }
+        }
         $newPath = Join-Path (Split-Path $targetPath -Parent) $newName
         if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) → $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} → {1}" -f (Split-Path $targetPath -Leaf), $newName) }
         else {
