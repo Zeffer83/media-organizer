@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.2'
+$global:AppVersion = '1.1.3'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -901,7 +901,12 @@ function Invoke-PhotoRename {
         Add-Content -Path $warningLog -Value ("Processing: {0}" -f $photo.Name)
         $formattedDate = $null
         try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd_HHmmss') } } catch { $formattedDate = $null }
-        if (-not $formattedDate) { $formattedDate = 'Unknown' }
+        if (-not $formattedDate) { 
+            # If we can't extract a proper date, use original filename base with random suffix
+            $randomSuffix = Get-Random -Minimum 1000 -Maximum 9999
+            $safeBaseName = $photo.BaseName -replace '[^a-zA-Z0-9_-]', '_'
+            $formattedDate = "${safeBaseName}_${randomSuffix}" 
+        }
         # Convert to jpg if requested and source isn't already JPEG
         if ($toJpeg -and $originalExt -notin @('.jpg', '.jpeg')) {
             $convertedPath = Join-Path $photo.DirectoryName ("{0}.jpg" -f $photo.BaseName)
