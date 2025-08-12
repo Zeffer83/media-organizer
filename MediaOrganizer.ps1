@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.1'
+$global:AppVersion = '1.2.2'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -797,13 +797,23 @@ function Invoke-VideoRename {
     $files = Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $exts -contains $_.Extension.ToLower() -and ($_.FullName -notlike (Join-Path $root 'backup*')) }
     Write-Host ("Found {0} video files" -f $files.Count)
     $groups = $files | Sort-Object LastWriteTime | Group-Object { $_.DirectoryName }
+    $dateSequenceCounters = @{}  # Track sequence numbers for each date
+    
     foreach ($g in $groups) {
         Write-Host ("Processing folder: {0} ({1} files)" -f $g.Name, $g.Group.Count)
         $i = 1; foreach ($f in $g.Group) {
             $chosen = Get-OldestDate $f -Verbose:$verbose
             $baseName = if ($null -ne $chosen) { $chosen.Date.ToString('yyyy-MM-dd') } else { (ConvertTo-SafeFileName (Split-Path $f.DirectoryName -Leaf)) + "_" + $i }
-            $newName = "$baseName$($f.Extension.ToLower())"; $newPath = Join-Path $f.DirectoryName $newName
-            $suf = 1; while (Test-Path $newPath) { $newName = "{0}_{1:D3}{2}" -f $baseName, $suf, $f.Extension.ToLower(); $newPath = Join-Path $f.DirectoryName $newName; $suf++ }
+            
+            # Sequential filename (same format as photos: yyyy-MM-dd_xxx)
+            if (-not $dateSequenceCounters.ContainsKey($baseName)) {
+                $dateSequenceCounters[$baseName] = 1
+            } else {
+                $dateSequenceCounters[$baseName]++
+            }
+            $sequenceNum = $dateSequenceCounters[$baseName]
+            $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $f.Extension.ToLower())
+            $newPath = Join-Path $f.DirectoryName $newName
             if ($f.FullName -eq $newPath) { "SKIP: $($f.Name)" | Tee-Object -FilePath $log -Append | Out-Null; $i++; continue }
             if ($chosen) { "DECISION: $($f.Name) → $newName | Source=$($chosen.Source) | Date=$($chosen.Date.ToString('u')) | Raw=$($chosen.Raw)" | Tee-Object -FilePath $log -Append | Out-Null } else { "DECISION: $($f.Name) → $newName | Source=FallbackFolderIndex | No date found" | Tee-Object -FilePath $log -Append | Out-Null }
             if ($dry) { "DRY-RUN: $($f.Name) → $newName" | Tee-Object -FilePath $log -Append | Out-Null }
