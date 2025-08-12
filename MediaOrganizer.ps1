@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.3'
+$global:AppVersion = '1.1.4'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -901,6 +901,13 @@ function Invoke-PhotoRename {
         Add-Content -Path $warningLog -Value ("Processing: {0}" -f $photo.Name)
         $formattedDate = $null
         try { if ($dateTaken) { $dt = [datetime]::ParseExact($dateTaken, 'yyyy:MM:dd HH:mm:ss', $null); $formattedDate = $dt.ToString('yyyy-MM-dd_HHmmss') } } catch { $formattedDate = $null }
+        
+        # Debug: Check if the date has time information (not just 00:00:00)
+        if ($formattedDate -and $formattedDate -match '_000000$') {
+            # The date extraction worked but time is 00:00:00, so use fallback
+            $formattedDate = $null
+        }
+        
         if (-not $formattedDate) { 
             # If we can't extract a proper date, use original filename base with random suffix
             $randomSuffix = Get-Random -Minimum 1000 -Maximum 9999
