@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.0'
+$global:AppVersion = '1.2.1'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -889,6 +889,7 @@ function Invoke-PhotoRename {
     $photos = Get-ChildItem -Path $root -Recurse -File |
     Where-Object { $allowedExts -contains $_.Extension.ToLower() -and ($_.FullName -notlike (Join-Path $backupRootNorm '*')) }
     $map = New-Object System.Collections.Generic.List[object]
+    $dateSequenceCounters = @{}  # Track sequence numbers for each date
     
     foreach ($photo in $photos) {
         $filename = $photo.Name
@@ -919,8 +920,13 @@ function Invoke-PhotoRename {
         $baseName = $formattedDate
         
         # Sequential filename (same format as videos: yyyy-MM-dd_xxx)
-        $newName = ("{0}{1}" -f $baseName, $outputExt)
-        $suf = 1; while (Test-Path (Join-Path (Split-Path $targetPath -Parent) $newName)) { $newName = ("{0}_{1:D3}{2}" -f $baseName, $suf, $outputExt); $suf++ }
+        if (-not $dateSequenceCounters.ContainsKey($baseName)) {
+            $dateSequenceCounters[$baseName] = 1
+        } else {
+            $dateSequenceCounters[$baseName]++
+        }
+        $sequenceNum = $dateSequenceCounters[$baseName]
+        $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $outputExt)
         $newPath = Join-Path (Split-Path $targetPath -Parent) $newName
         if ($dry) { Write-Host "🧪 Would rename: $(Split-Path $targetPath -Leaf) → $newName"; Add-Content -Path $log -Value ("DRY-RUN: {0} → {1}" -f (Split-Path $targetPath -Leaf), $newName) }
         else {
