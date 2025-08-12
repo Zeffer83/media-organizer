@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.6'
+$global:AppVersion = '1.2.8'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -799,7 +799,7 @@ function Invoke-VideoRename {
     $files = Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $exts -contains $_.Extension.ToLower() -and ($_.FullName -notlike (Join-Path $root 'backup*')) }
     Write-Host ("Found {0} video files" -f $files.Count)
     $groups = $files | Sort-Object LastWriteTime | Group-Object { $_.DirectoryName }
-    $dateSequenceCounters = @{}  # Track sequence numbers for each date
+    $dateSequenceCounters = @{}  # Track sequence numbers for each date (global across all folders)
     
     foreach ($g in $groups) {
         Write-Host ("Processing folder: {0} ({1} files)" -f $g.Name, $g.Group.Count)
@@ -817,6 +817,17 @@ function Invoke-VideoRename {
             $sequenceNum = $dateSequenceCounters[$baseName]
             $newName = ("{0}_{1:D3}{2}" -f $baseName, $sequenceNum, $f.Extension.ToLower())
             $newPath = Join-Path $f.DirectoryName $newName
+            
+            # Ensure unique path - if target already exists, generate a unique name
+            $candidatePath = $newPath
+            $counter = 1
+            while (Test-Path -LiteralPath $candidatePath) {
+                $newName = ("{0}_{1:D3}_{2}{3}" -f $baseName, $sequenceNum, $counter, $f.Extension.ToLower())
+                $candidatePath = Join-Path $f.DirectoryName $newName
+                $counter++
+            }
+            $newPath = $candidatePath
+            
             if ($f.FullName -eq $newPath) { "SKIP: $($f.Name)" | Out-File -FilePath $log -Append -Encoding UTF8; $i++; continue }
             if ($chosen) { "DECISION: $($f.Name) -> $newName | Source=$($chosen.Source) | Date=$($chosen.Date.ToString('u')) | Raw=$($chosen.Raw)" | Out-File -FilePath $log -Append -Encoding UTF8 } else { "DECISION: $($f.Name) -> $newName | Source=FallbackFolderIndex | No date found" | Out-File -FilePath $log -Append -Encoding UTF8 }
             if ($dry) { "DRY-RUN: $($f.Name) -> $newName" | Out-File -FilePath $log -Append -Encoding UTF8 }
@@ -1257,8 +1268,9 @@ function Invoke-VideoConvertLean {
                         try { $dt = (Get-Item $inputPath).LastWriteTime; $it = Get-Item $finalOut; $it.CreationTime = $dt; $it.LastWriteTime = $dt } catch {}
                     }
 
-                    $deleted = $false
-                    try { Remove-Item -LiteralPath $inputPath -Force; $deleted = $true; $messages.Add(("Deleted source: {0}" -f $inputPath)) } catch { $messages.Add(("WARN: Failed to delete source: {0}" -f $_.Exception.Message)) }
+                    # Original file has been overwritten by the converted file, so no need to delete anything
+                    $deleted = $true
+                    $messages.Add(("Replaced original: {0}" -f $inputPath))
                     return [pscustomobject]@{ Encoded = $encoded; UsedGpu = $usedGpu; BackedUp = $true; Deleted = $deleted; SrcBytes = $srcBytes; OutBytes = $outBytes; Messages = @($messages) }
                 }
                 catch {
@@ -1411,9 +1423,9 @@ function Invoke-VideoConvertLean {
                 if ($LASTEXITCODE -ne 0) { throw "Both GPU and CPU encoding failed (last code ${LASTEXITCODE})" }
                 $countEncoded++; $countCpu++
             }
-            # Delete original file first, then move converted file to final location
-            try { Remove-Item -LiteralPath $inputPath -Force; $countDeleted++; Write-Host ("Deleted source: {0}" -f $inputPath) } catch { Write-Host ("WARN: Failed to delete source: {0}" -f $_.Exception.Message) }
+            # Move converted file to final location (overwriting original), then clean up
             Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
+            $countDeleted++
             $outSize = (Get-Item -LiteralPath $finalOut).Length; $outSizeStr = Format-Bytes $outSize; $totalOutBytes += $outSize
             $delta = [long]($srcSize - $outSize); $deltaStr = Format-Bytes ([math]::Abs($delta))
             $pct = if ($srcSize -gt 0) { [math]::Round((1.0 - ($outSize / [double]$srcSize)) * 100.0, 1) } else { 0 }
