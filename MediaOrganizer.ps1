@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.1.5'
+$global:AppVersion = '1.1.6'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -540,24 +540,15 @@ function Get-DatesFromFilename($name, [switch]$Verbose) {
         Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM' $dt $m.Value 
     }
     
-    # Photo with yyyy_MM_dd_HHMM format (4-digit time, e.g., 2016_08_03_4170)
-    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_(?<TIME>\d{4})$')) { 
+    # Photo with yyyy_MM_dd_sequence format (4-digit sequence, e.g., 2016_08_03_4170)
+    foreach ($m in [regex]::Matches($name, '^(?<Y>\d{4})_(?<M>\d{2})_(?<D>\d{2})_(?<SEQ>\d{4})$')) { 
         $dt = $null; 
         try { 
-            $timeStr = $m.Groups['TIME'].Value
-            $hour = $timeStr.Substring(0, 2)
-            $minute = $timeStr.Substring(2, 2)
-            
-            # Validate time components
-            $hourInt = [int]$hour
-            $minuteInt = [int]$minute
-            
-            # If the time looks valid (hour 0-23, minute 0-59), use it
-            if ($hourInt -ge 0 -and $hourInt -le 23 -and $minuteInt -ge 0 -and $minuteInt -le 59) {
-                $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value + '_' + $hour + $minute + '00'), 'yyyyMMdd_HHmmss', [cultureinfo]::InvariantCulture) 
-            }
+            # Treat the 4-digit number as a sequence, not time
+            # Use the date with 00:00:00 time and let the sequential suffix handle conflicts
+            $dt = [datetime]::ParseExact(($m.Groups['Y'].Value + $m.Groups['M'].Value + $m.Groups['D'].Value), 'yyyyMMdd', [cultureinfo]::InvariantCulture) 
         } catch {}; 
-        Add-Candidate 'Name:Photo_yyyy_MM_dd_HHMM_4digit' $dt $m.Value 
+        Add-Candidate 'Name:Photo_yyyy_MM_dd_sequence' $dt $m.Value 
     }
     
     # Photo with number suffix (date only) - fallback for patterns that don't match time
