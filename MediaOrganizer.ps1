@@ -23,7 +23,7 @@ param()
 # === Application Metadata ===
 # Global variables for application information and versioning
 $global:AppName = 'MediaOrganizer'
-$global:AppVersion = '1.2.8'
+$global:AppVersion = '1.2.10'
 $global:AppAuthor = 'Ryan Zeffiretti'
 $global:AppDescription = 'Organize and convert media files with standardized naming'
 $global:AppCopyright = 'Copyright (c) 2025 Ryan Zeffiretti - MIT License'
@@ -1255,22 +1255,40 @@ function Invoke-VideoConvertLean {
                         if ($LASTEXITCODE -ne 0) { throw "Both GPU and CPU encoding failed (last code ${LASTEXITCODE})" } else { $encoded = $true }
                     }
 
-                    # Since we have a backup, we can overwrite the original file directly
-                    # No need to generate unique names with (1) suffix
-                    Move-Item -LiteralPath $tempOut -Destination $finalOut -Force
-                    $messages.Add(("Wrote: {0}" -f $finalOut))
+                    # Handle different extensions properly
+                    $originalExt = [IO.Path]::GetExtension($inputPath)
+                    $targetExt = [IO.Path]::GetExtension($finalOut)
+                    
+                    if ($originalExt -eq $targetExt) {
+                        # Same extension - overwrite original
+                        Move-Item -LiteralPath $tempOut -Destination $finalOut -Force
+                        $messages.Add(("Wrote: {0}" -f $finalOut))
+                        $deleted = $true
+                        $messages.Add(("Replaced original: {0}" -f $inputPath))
+                    } else {
+                        # Different extension - delete original, then move converted file
+                        try { Remove-Item -LiteralPath $inputPath -Force; $deleted = $true; $messages.Add(("Deleted original: {0}" -f $inputPath)) } catch { $messages.Add(("WARN: Failed to delete original: {0}" -f $_.Exception.Message)) }
+                        Move-Item -LiteralPath $tempOut -Destination $finalOut -Force
+                        $messages.Add(("Wrote: {0}" -f $finalOut))
+                    }
+
+                    # Capture original timestamps before any file operations
+                    $origCreation = $null; $origWrite = $null
+                    if ($preserve) {
+                        try { 
+                            $origItem = Get-Item $inputPath
+                            $origCreation = $origItem.CreationTime
+                            $origWrite = $origItem.LastWriteTime
+                        } catch {}
+                    }
 
                     $outBytes = (Get-Item -LiteralPath $finalOut).Length; $outSizeStr = FB $outBytes
                     $delta = [long]($srcBytes - $outBytes); $deltaStr = FB ([math]::Abs($delta)); $pct = if ($srcBytes -gt 0) { [math]::Round((1.0 - ($outBytes / [double]$srcBytes)) * 100.0, 1) } else { 0 }
                     $messages.Add(("Size: $($srcSizeStr) → $($outSizeStr) (Δ $deltaStr, ${pct}% change)"))
 
-                    if ($preserve) {
-                        try { $dt = (Get-Item $inputPath).LastWriteTime; $it = Get-Item $finalOut; $it.CreationTime = $dt; $it.LastWriteTime = $dt } catch {}
+                    if ($preserve -and $origWrite -ne $null) {
+                        try { $it = Get-Item $finalOut; $it.CreationTime = $origCreation; $it.LastWriteTime = $origWrite } catch {}
                     }
-
-                    # Original file has been overwritten by the converted file, so no need to delete anything
-                    $deleted = $true
-                    $messages.Add(("Replaced original: {0}" -f $inputPath))
                     return [pscustomobject]@{ Encoded = $encoded; UsedGpu = $usedGpu; BackedUp = $true; Deleted = $deleted; SrcBytes = $srcBytes; OutBytes = $outBytes; Messages = @($messages) }
                 }
                 catch {
@@ -1423,15 +1441,37 @@ function Invoke-VideoConvertLean {
                 if ($LASTEXITCODE -ne 0) { throw "Both GPU and CPU encoding failed (last code ${LASTEXITCODE})" }
                 $countEncoded++; $countCpu++
             }
-            # Move converted file to final location (overwriting original), then clean up
-            Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
-            $countDeleted++
+            # Capture original timestamps before any file operations
+            $origCreation = $null; $origWrite = $null
+            if ($preserve) {
+                try { 
+                    $origItem = Get-Item $inputPath
+                    $origCreation = $origItem.CreationTime
+                    $origWrite = $origItem.LastWriteTime
+                } catch {}
+            }
+
+            # Handle different extensions properly
+            $originalExt = [IO.Path]::GetExtension($inputPath)
+            $targetExt = [IO.Path]::GetExtension($finalOut)
+            
+            if ($originalExt -eq $targetExt) {
+                # Same extension - overwrite original
+                Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
+                $countDeleted++
+            } else {
+                # Different extension - delete original, then move converted file
+                try { Remove-Item -LiteralPath $inputPath -Force; $countDeleted++; Write-Host ("Deleted original: {0}" -f $inputPath) } catch { Write-Host ("WARN: Failed to delete original: {0}" -f $_.Exception.Message) }
+                Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
+            }
             $outSize = (Get-Item -LiteralPath $finalOut).Length; $outSizeStr = Format-Bytes $outSize; $totalOutBytes += $outSize
             $delta = [long]($srcSize - $outSize); $deltaStr = Format-Bytes ([math]::Abs($delta))
             $pct = if ($srcSize -gt 0) { [math]::Round((1.0 - ($outSize / [double]$srcSize)) * 100.0, 1) } else { 0 }
             $sizeLine = "Size: $srcSizeStr → $outSizeStr (Δ $deltaStr, ${pct}% change)"
             Write-Host $sizeLine; Add-Content $logFile $sizeLine
-            if ($preserve) { Set-OutputTimestampFromSource -Target $finalOut -Source $inputPath -Ffprobe $ffprobe }
+            if ($preserve -and $origWrite -ne $null) { 
+                try { $it = Get-Item $finalOut; $it.CreationTime = $origCreation; $it.LastWriteTime = $origWrite } catch {}
+            }
         }
         catch { $countErrors++; Write-Host ("ERROR: {0}" -f $_.Exception.Message); if (Test-Path $tempOut) { try { Remove-Item -LiteralPath $tempOut -Force }catch {} } }
     }

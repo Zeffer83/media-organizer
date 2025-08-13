@@ -3,7 +3,7 @@
 A comprehensive PowerShell utility for organizing and processing local photos and videos with intelligent date extraction, GPU-accelerated video conversion, and safe rollback capabilities.
 
 **Author:** Ryan Zeffiretti  
-**Version:** 1.2.8 (Latest Release)  
+**Version:** 1.2.10 (Latest Release)  
 **License:** MIT
 
 ## Why MediaOrganizer?
@@ -100,7 +100,7 @@ Download the latest release EXE from the [Releases](https://github.com/Zeffer83/
 ## Menu Overview
 
 ```
-MediaOrganizer v1.2.8
+MediaOrganizer v1.2.10
 Author: Ryan Zeffiretti
 ------------------------------------------------------------
 Organize and process your media:
@@ -187,7 +187,19 @@ Select option:
 
 ## Recent Changes
 
-### v1.2.8 (Latest)
+### v1.2.10 (Latest)
+
+- **Fixed timestamp preservation error:** Resolved "Cannot find path" error when preserving timestamps during video conversion with different extensions
+- **Improved timestamp handling:** Now captures original timestamps before file operations to prevent access errors
+- **Enhanced reliability:** Timestamp preservation now works correctly for both same and different file extensions
+
+### v1.2.9
+
+- **Fixed video conversion with different extensions:** Resolved issue where original files weren't being replaced when converting between different formats (e.g., .avi to .mp4)
+- **Improved extension handling:** Now properly deletes original files when output format differs from input format
+- **Enhanced file management:** Prevents duplicate files when converting between different container formats
+
+### v1.2.8
 
 - **Fixed video conversion file deletion issue:** Resolved problem where converted files were being deleted after conversion
 - **Improved conversion workflow:** Both threaded and non-threaded versions now consistently overwrite original files without deletion errors
