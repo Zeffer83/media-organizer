@@ -1265,7 +1265,8 @@ function Invoke-VideoConvertLean {
                         $messages.Add(("Wrote: {0}" -f $finalOut))
                         $deleted = $true
                         $messages.Add(("Replaced original: {0}" -f $inputPath))
-                    } else {
+                    }
+                    else {
                         # Different extension - delete original, then move converted file
                         try { Remove-Item -LiteralPath $inputPath -Force; $deleted = $true; $messages.Add(("Deleted original: {0}" -f $inputPath)) } catch { $messages.Add(("WARN: Failed to delete original: {0}" -f $_.Exception.Message)) }
                         Move-Item -LiteralPath $tempOut -Destination $finalOut -Force
@@ -1279,14 +1280,15 @@ function Invoke-VideoConvertLean {
                             $origItem = Get-Item $inputPath
                             $origCreation = $origItem.CreationTime
                             $origWrite = $origItem.LastWriteTime
-                        } catch {}
+                        }
+                        catch {}
                     }
 
                     $outBytes = (Get-Item -LiteralPath $finalOut).Length; $outSizeStr = FB $outBytes
                     $delta = [long]($srcBytes - $outBytes); $deltaStr = FB ([math]::Abs($delta)); $pct = if ($srcBytes -gt 0) { [math]::Round((1.0 - ($outBytes / [double]$srcBytes)) * 100.0, 1) } else { 0 }
                     $messages.Add(("Size: $($srcSizeStr) → $($outSizeStr) (Δ $deltaStr, ${pct}% change)"))
 
-                    if ($preserve -and $origWrite -ne $null) {
+                    if ($preserve -and $null -ne $origWrite) {
                         try { $it = Get-Item $finalOut; $it.CreationTime = $origCreation; $it.LastWriteTime = $origWrite } catch {}
                     }
                     return [pscustomobject]@{ Encoded = $encoded; UsedGpu = $usedGpu; BackedUp = $true; Deleted = $deleted; SrcBytes = $srcBytes; OutBytes = $outBytes; Messages = @($messages) }
@@ -1448,7 +1450,8 @@ function Invoke-VideoConvertLean {
                     $origItem = Get-Item $inputPath
                     $origCreation = $origItem.CreationTime
                     $origWrite = $origItem.LastWriteTime
-                } catch {}
+                }
+                catch {}
             }
 
             # Handle different extensions properly
@@ -1459,7 +1462,8 @@ function Invoke-VideoConvertLean {
                 # Same extension - overwrite original
                 Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
                 $countDeleted++
-            } else {
+            }
+            else {
                 # Different extension - delete original, then move converted file
                 try { Remove-Item -LiteralPath $inputPath -Force; $countDeleted++; Write-Host ("Deleted original: {0}" -f $inputPath) } catch { Write-Host ("WARN: Failed to delete original: {0}" -f $_.Exception.Message) }
                 Move-Item -LiteralPath $tempOut -Destination $finalOut -Force; Write-Host ("Wrote: {0}" -f $finalOut)
@@ -1469,7 +1473,7 @@ function Invoke-VideoConvertLean {
             $pct = if ($srcSize -gt 0) { [math]::Round((1.0 - ($outSize / [double]$srcSize)) * 100.0, 1) } else { 0 }
             $sizeLine = "Size: $srcSizeStr → $outSizeStr (Δ $deltaStr, ${pct}% change)"
             Write-Host $sizeLine; Add-Content $logFile $sizeLine
-            if ($preserve -and $origWrite -ne $null) { 
+            if ($preserve -and $null -ne $origWrite) { 
                 try { $it = Get-Item $finalOut; $it.CreationTime = $origCreation; $it.LastWriteTime = $origWrite } catch {}
             }
         }
